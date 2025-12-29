@@ -3,234 +3,335 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TMS Fotus Web</title>
+    <title>Roteirizador Fotus</title>
     
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
     <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 </head>
 <body>
 
-<div class="app-container">
-    <div class="sidebar">
-        <div class="header d-flex justify-content-between align-items-center">
-            <h6 class="m-0 fw-bold text-primary"><i class="fas fa-truck-moving"></i> TMS Fotus</h6>
-            <select id="selectOrigem" class="form-select form-select-sm w-auto fw-bold" style="font-size:0.75rem;"></select>
-        </div>
-        
-        <ul class="nav nav-tabs nav-fill" id="myTab" role="tablist">
-            <li class="nav-item"><a class="nav-link active" id="home-tab" data-bs-toggle="tab" href="#tab-home">Roteirizar</a></li>
-            <li class="nav-item"><a class="nav-link" id="dash-tab" data-bs-toggle="tab" href="#tab-dash" onclick="carregarDashboard()">KPIs</a></li>
-            <li class="nav-item"><a class="nav-link" id="risk-tab" data-bs-toggle="tab" href="#tab-risk" onclick="carregarRiscos()">Riscos</a></li>
-            <li class="nav-item"><a class="nav-link" id="transp-tab" data-bs-toggle="tab" href="#tab-transp" onclick="carregarTransportadores()">Transp.</a></li>
-            <li class="nav-item"><a class="nav-link" id="history-tab" data-bs-toggle="tab" href="#tab-history" onclick="carregarHistorico()">Histórico</a></li>
-        </ul>
-
-        <div class="content tab-content">
-            <div class="tab-pane fade show active" id="tab-home">
-                <div class="flags-container">
-                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="flagPedagio" onchange="if(currentRouteIndex>=0) verRotaNoMapa(currentRouteIndex)"><label class="form-check-label">🚫 Evitar Pedágios</label></div>
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="header">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="m-0 fw-bold text-primary"><i class="fas fa-truck-moving"></i> Roteirizador Fotus</h6>
                 </div>
-
-                <div id="inputSection">
-                    <div class="input-card">
-                        <div class="mb-2"><label class="form-label">Endereço</label><input type="text" id="inEnd" class="form-control" placeholder="Ex: Rodovia Gov. Mário Covas, Serra"></div>
-                        <div class="row g-2">
-                            <div class="col-4"><label class="form-label">Peso (kg)</label><input type="number" id="inPeso" class="form-control" placeholder="0"></div>
-                            <div class="col-4"><label class="form-label">Valor (R$)</label><input type="number" id="inValor" class="form-control" placeholder="0"></div>
-                            <div class="col-4"><label class="form-label">Vol (m³)</label><input type="number" id="inVol" class="form-control" placeholder="0"></div>
-                        </div>
-                        <button class="btn btn-dark w-100 mt-2 btn-sm fw-bold" onclick="addPedidoManual()"><i class="fas fa-plus-circle"></i> ADICIONAR</button>
+                <div class="user-info-box bg-light border rounded p-2 d-flex align-items-center justify-content-between" style="font-size: 0.75rem;">
+                    <div>
+                        <div class="fw-bold text-dark" id="displayUser">Usuário</div>
+                        <div class="text-muted" id="displayFilial">Filial</div>
                     </div>
-                    
-                    <div class="live-summary">
-                        <div class="summary-item"><span>Pedidos:</span> <strong id="lblQtd">0</strong></div>
-                        <div class="summary-item"><span>Peso Total:</span> <strong id="lblPeso">0 kg</strong></div>
-                        <div class="summary-item summary-total"><span>Veículo:</span> <span id="lblVeiculo" class="badge bg-secondary">--</span></div>
-                    </div>
-                    
-                    <div class="order-list" id="listaPedidos"></div>
-                    <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm" onclick="processarRota()"><i class="fas fa-route"></i> PROCESSAR ROTA</button>
-                    
-                    <div class="mt-3">
-                        <label class="form-label fw-bold small">Importar Excel</label>
-                        <input type="file" id="csvFile" class="form-control form-control-sm" accept=".xlsx, .xls, .csv" onchange="handleFileUpload(this)">
-                    </div>
-                </div>
-
-                <div id="resultSection" style="display:none;">
-                    <button class="btn btn-outline-secondary btn-sm mb-3 w-100" onclick="voltarInput()"><i class="fas fa-arrow-left"></i> Nova Rota</button>
-                    <div id="cardsContainer"></div>
+                    <button class="btn btn-xs btn-outline-secondary" onclick="logout()" title="Trocar Usuário">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
                 </div>
                 
-                <div id="loading" class="text-center mt-4 text-primary fw-bold small" style="display:none;">
-                    <i class="fas fa-spinner fa-spin fa-2x"></i><br><span id="loading-text">Processando...</span>
+                <div class="mt-2">
+                    <select id="selectOrigem" class="form-select form-select-sm fw-bold" style="font-size:0.75rem;"></select>
                 </div>
             </div>
             
-            <div class="tab-pane fade" id="tab-dash">
-                <div class="kpi-card"><div class="kpi-label">Economia Total</div><div class="kpi-value kpi-good" id="kpiEconomia">R$ 0,00</div></div>
-                <div id="kpiChartContainer" style="height:200px;"><canvas id="kpiChart"></canvas></div>
-            </div>
+            <ul class="nav nav-tabs nav-fill" id="myTab" role="tablist">
+                <li class="nav-item"><a class="nav-link active" id="home-tab" data-bs-toggle="tab" href="#tab-home">Roteirizar</a></li>
+                <li class="nav-item"><a class="nav-link" id="dash-tab" data-bs-toggle="tab" href="#tab-dash" onclick="carregarDashboard()">KPIs</a></li>
+                <li class="nav-item"><a class="nav-link" id="risk-tab" data-bs-toggle="tab" href="#tab-risk" onclick="carregarRiscos()">Riscos</a></li>
+                <li class="nav-item"><a class="nav-link" id="transp-tab" data-bs-toggle="tab" href="#tab-transp" onclick="carregarTransportadores()">Transp.</a></li>
+                <li class="nav-item"><a class="nav-link" id="history-tab" data-bs-toggle="tab" href="#tab-history" onclick="carregarHistorico()">Histórico</a></li>
+            </ul>
 
-            <div class="tab-pane fade" id="tab-risk">
-                <div class="input-card border-danger">
-                    <h6 class="fw-bold text-danger mb-3">Cadastrar Risco</h6>
-                    <input type="text" id="riskAddr" class="form-control mb-2" placeholder="Endereço ou Coordenada (-20.1, -40.2)">
-                    <div class="row g-2 mb-2">
-                        <div class="col-6"><input type="number" id="riskCost" class="form-control" placeholder="Custo (R$)"></div>
-                        <div class="col-6"><input type="number" id="riskRadius" class="form-control" placeholder="Raio (m)" value="500"></div>
+            <div class="content tab-content">
+                
+                <div class="tab-pane fade show active" id="tab-home">
+                    <div class="flags-container">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="flagPedagio" onchange="if(currentRouteIndex>=0) verRotaNoMapa(currentRouteIndex)">
+                            <label class="form-check-label">🚫 Evitar Pedágios</label>
+                        </div>
                     </div>
-                    <input type="text" id="riskDesc" class="form-control mb-2" placeholder="Descrição">
-                    <button class="btn btn-danger w-100 btn-sm" onclick="salvarRisco()">CADASTRAR</button>
-                </div>
-                <hr><div id="listaRiscos"></div>
-            </div>
 
-            <div class="tab-pane fade" id="tab-transp">
-                <div class="input-card border-primary">
-                    <h6 class="fw-bold text-primary mb-3">Cadastrar Tabela Transportador</h6>
+                    <div id="inputSection">
+                        <div class="input-card">
+                            <div class="mb-2">
+                                <label class="form-label">Endereço</label>
+                                <input type="text" id="inEnd" class="form-control" placeholder="Ex: Rodovia Gov. Mário Covas, Serra">
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-4"><label class="form-label">Peso (kg)</label><input type="number" id="inPeso" class="form-control" placeholder="0"></div>
+                                <div class="col-4"><label class="form-label">Valor (R$)</label><input type="number" id="inValor" class="form-control" placeholder="0"></div>
+                                <div class="col-4"><label class="form-label">Vol (m³)</label><input type="number" id="inVol" class="form-control" placeholder="0"></div>
+                            </div>
+                            <button class="btn btn-dark w-100 mt-2 btn-sm fw-bold" onclick="addPedidoManual()">
+                                <i class="fas fa-plus-circle"></i> ADICIONAR
+                            </button>
+                        </div>
+                        
+                        <div class="live-summary">
+                            <div class="summary-item"><span>Pedidos:</span> <strong id="lblQtd">0</strong></div>
+                            <div class="summary-item"><span>Peso Total:</span> <strong id="lblPeso">0 kg</strong></div>
+                            <div class="summary-item"><span>Valor Total:</span> <strong id="lblValor" class="text-success">R$ 0,00</strong></div>
+                            <div class="summary-item summary-total"><span>Veículo:</span> <span id="lblVeiculo" class="badge bg-secondary">--</span></div>
+                        </div>
+                        
+                        <div class="order-list" id="listaPedidos"></div>
+                        
+                        <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm" onclick="processarRota()">
+                            <i class="fas fa-route"></i> PROCESSAR ROTA
+                        </button>
+                        
+                        <div class="mt-3">
+                            <label class="form-label fw-bold small">Importar Excel</label>
+                            <input type="file" id="csvFile" class="form-control form-control-sm" accept=".xlsx, .xls, .csv" onchange="handleFileUpload(this)">
+                        </div>
+                    </div>
+
+                    <div id="resultSection" style="display:none;" class="p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <button class="btn btn-sm btn-secondary" onclick="voltarInput()">
+                                <i class="fas fa-arrow-left"></i> Voltar
+                            </button>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="toggleRouteLine" checked onchange="window.toggleRouteVisibility()">
+                                <label class="form-check-label fw-bold small text-muted" for="toggleRouteLine">Mostrar Traçado</label>
+                            </div>
+                        </div>
+                        <div id="cardsContainer"></div>
+                    </div>
                     
-                    <div class="mb-2">
-                        <label class="form-label text-muted small">Nome da Transportadora</label>
-                        <input type="text" id="transpNome" class="form-control" placeholder="Ex: Boaretto, Jamef...">
-                    </div>
-                    
-                    <div class="mb-2">
-                        <label class="form-label text-muted small">UFs Atendidas (Separadas por vírgula)</label>
-                        <input type="text" id="transpUfs" class="form-control" placeholder="Ex: MG, ES, RJ">
-                    </div>
-
-                    <hr class="my-2 text-muted">
-                    <label class="form-label text-primary fw-bold small mb-2">Parâmetros de Custo (Tabela)</label>
-
-                    <div class="row g-2 mb-2">
-                        <div class="col-4">
-                            <label class="form-label small" title="Percentual sobre o valor da nota">Frete Valor (%)</label>
-                            <input type="number" id="transpAdValorem" class="form-control" placeholder="Ex: 0.30">
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small" title="Gerenciamento de Risco">GRIS (%)</label>
-                            <input type="number" id="transpGris" class="form-control" placeholder="Ex: 0.20">
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small" title="Preço por Kg transportado">Frete Peso (R$/kg)</label>
-                            <input type="number" id="transpPrecoKg" class="form-control" placeholder="Ex: 0.50">
-                        </div>
-                    </div>
-
-                    <div class="row g-2 mb-2">
-                        <div class="col-4">
-                            <label class="form-label small" title="Taxas fixas (Despacho, Pedágio, TDE)">Taxas Fixas (R$)</label>
-                            <input type="number" id="transpTaxa" class="form-control" placeholder="Ex: 150.00">
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small">Frete Mínimo (R$)</label>
-                            <input type="number" id="transpMinimo" class="form-control" placeholder="Ex: 300.00">
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small">Pedágio (R$/100kg)</label>
-                            <input type="number" id="transpPedagio" class="form-control" placeholder="Ex: 2.50">
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary w-100 btn-sm fw-bold mt-2" onclick="salvarTransportadora()">
-                        <i class="fas fa-save"></i> SALVAR TABELA
-                    </button>
-                    
-                    <div class="mt-3 pt-2 border-top">
-                        <label class="form-label fw-bold small text-muted">Importar Tabela (Excel/CSV)</label>
-                        <input type="file" id="fileTabela" class="form-control form-control-sm" accept=".xlsx, .xls, .csv" onchange="importarTabelaTransp(this)">
-                        <small class="text-muted" style="font-size: 0.65rem;">Colunas esperadas: NOME, UF, ADVALOREM, GRIS, PRECO_KG, TAXA, MINIMO</small>
+                    <div id="loading" class="text-center mt-4 text-primary fw-bold small" style="display:none;">
+                        <i class="fas fa-spinner fa-spin fa-2x"></i><br><span id="loading-text">Processando...</span>
                     </div>
                 </div>
-                <hr>
-                <div id="listaTransportadores">Carregando...</div>
-            </div>
-
-            <div class="tab-pane fade" id="tab-history">
-                <div id="historyList"></div>
-            </div>
-        </div>
-
-        <div class="footer-actions">
-            <button class="btn-backup" data-bs-toggle="modal" data-bs-target="#modalExport">
-                <i class="fas fa-file-export"></i> RELATÓRIOS & BACKUP
-            </button>
-        </div>
-    </div>
-
-    <div class="map-container">
-        <div id="map"></div>
-        <div class="map-stats" id="routeStats" style="display:none;">
-            <h6 class="fw-bold text-primary mb-1 small" id="statNome">Rota</h6>
-            <div class="mini-stat-time" id="statTempoTotal">--</div>
-            <div class="mini-stat-row mt-2"><i class="fas fa-road text-muted"></i> <span id="statDist">--</span></div>
-            <div class="mini-stat-row"><i class="fas fa-truck text-muted"></i> <strong id="statVeiculo">--</strong></div>
-            <div id="riskAlertBox" style="display:none;" class="risk-alert-bar"></div>
-        </div>
-        
-        <div class="finance-panel d-flex" id="financePanel" style="display:none;">
-            <div class="close-finance" onclick="document.getElementById('financePanel').style.display='none'">×</div>
-            
-            <div class="finance-card" id="cardItinerante">
-                <h5><i class="fas fa-truck"></i> Itinerante (Dedicado)</h5>
-                <span class="price" id="valItinerante">R$ --</span>
-                <span class="badge-pct" id="pctItinerante">--%</span>
-                <div class="winner-tag">✅ MELHOR OPÇÃO</div>
-                <div class="small text-muted mt-1" id="econItinerante"></div>
-            </div>
-            
-            <div class="fw-bold text-muted px-2">VS</div>
-            
-            <div class="finance-card" id="cardFracionado">
-                <h5><i class="fas fa-boxes"></i> Fracionado (Tabela)</h5>
-                <span class="price" id="valFracionado">R$ --</span>
-                <span class="badge-pct" id="pctFracionado">--%</span>
-                <div class="winner-tag">✅ MELHOR OPÇÃO</div>
-                <div class="small text-muted mt-1" id="econFracionado"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="modalExport" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h6 class="modal-title fw-bold">Exportar Relatório Gerencial</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <label class="form-label small fw-bold">Período de Análise</label>
-                <div class="d-flex gap-2">
-                    <input type="date" id="dateStart" class="form-control">
-                    <input type="date" id="dateEnd" class="form-control">
+                
+                <div class="tab-pane fade" id="tab-dash">
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <div class="kpi-card border-success text-center p-2 rounded bg-light">
+                                <small class="text-muted fw-bold" style="font-size: 0.7rem;">ECONOMIA ACUMULADA</small>
+                                <div class="h5 fw-bold text-success m-0" id="kpiEconomia">R$ 0,00</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="kpi-card border-secondary text-center p-2 rounded bg-light">
+                                <small class="text-muted fw-bold" style="font-size: 0.7rem;">GASTO TOTAL FRETE</small>
+                                <div class="h5 fw-bold text-dark m-0" id="kpiGasto">R$ 0,00</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-2">
+                            <h6 class="card-title text-center small text-muted mb-3">Distribuição de Modalidade (Qtd)</h6>
+                            <div style="height: 250px; position: relative;">
+                                <canvas id="kpiChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-center mt-3">
+                        <small class="text-muted">Total de Rotas Analisadas: <strong id="kpiQtd">0</strong></small>
+                    </div>
                 </div>
-                <div class="alert alert-info mt-3 small">
-                    <i class="fas fa-info-circle"></i> O arquivo Excel conterá todos os dados tratados: Data, Rota, Veículo, Custo Real, Custo Tabela e Economia.
+
+                <div class="tab-pane fade" id="tab-risk">
+                    <div class="input-card border-danger">
+                        <h6 class="fw-bold text-danger mb-3">Cadastrar Risco</h6>
+                        <input type="text" id="riskAddr" class="form-control mb-2" placeholder="Endereço ou Coordenada (-20.1, -40.2)">
+                        <div class="row g-2 mb-2">
+                            <div class="col-6"><input type="number" id="riskCost" class="form-control" placeholder="Custo (R$)"></div>
+                            <div class="col-6"><input type="number" id="riskRadius" class="form-control" placeholder="Raio (m)" value="500"></div>
+                        </div>
+                        <input type="text" id="riskDesc" class="form-control mb-2" placeholder="Descrição">
+                        <button class="btn btn-danger w-100 btn-sm" onclick="salvarRisco()">CADASTRAR</button>
+                    </div>
+                    <hr><div id="listaRiscos"></div>
+                </div>
+
+                <div class="tab-pane fade" id="tab-transp">
+                    <div class="input-card border-primary">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="fw-bold text-primary m-0"><i class="fas fa-table"></i> Cadastro de Tabela</h6>
+                            <button class="btn btn-sm btn-outline-success" onclick="exportarModeloTabela()">
+                                <i class="fas fa-file-excel"></i> BAIXAR MODELO PADRÃO
+                            </button>
+                        </div>
+                        
+                        <label class="badge bg-secondary mb-2 w-100 text-start">1. Identificação & Região</label>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6"><input type="text" id="transpNome" class="form-control form-control-sm" placeholder="Nome (Ex: Jamef)"></div>
+                            <div class="col-6"><input type="text" id="transpUfs" class="form-control form-control-sm" placeholder="UF Destino (Ex: SP)"></div>
+                        </div>
+
+                        <label class="badge bg-secondary mb-2 w-100 text-start">2. Cobrança por Peso</label>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6"><label class="form-label small text-muted">Preço por Kg (R$)</label><input type="number" id="transpPrecoKg" class="form-control form-control-sm" placeholder="0.00"></div>
+                            <div class="col-6"><label class="form-label small text-muted">Pedágio (R$/100kg)</label><input type="number" id="transpPedagio" class="form-control form-control-sm" placeholder="0.00"></div>
+                        </div>
+
+                        <label class="badge bg-secondary mb-2 w-100 text-start">3. Cobrança por Valor (%)</label>
+                        <div class="row g-2 mb-2">
+                            <div class="col-4"><label class="form-label small text-muted">Ad Valorem</label><input type="number" id="transpAdValorem" class="form-control form-control-sm" placeholder="%"></div>
+                            <div class="col-4"><label class="form-label small text-muted">GRIS</label><input type="number" id="transpGris" class="form-control form-control-sm" placeholder="%"></div>
+                            <div class="col-4"><label class="form-label small text-muted">Outros %</label><input type="number" id="transpOutrosPct" class="form-control form-control-sm" placeholder="%"></div>
+                        </div>
+
+                        <label class="badge bg-secondary mb-2 w-100 text-start">4. Taxas Fixas & Mínimos</label>
+                        <div class="row g-2 mb-2">
+                            <div class="col-4"><label class="form-label small text-muted">Taxa (Despacho)</label><input type="number" id="transpTaxa" class="form-control form-control-sm" placeholder="R$"></div>
+                            <div class="col-4"><label class="form-label small text-muted">TAS/Admin</label><input type="number" id="transpTas" class="form-control form-control-sm" placeholder="R$"></div>
+                            <div class="col-4"><label class="form-label small text-muted text-danger fw-bold">Frete Mínimo</label><input type="number" id="transpMinimo" class="form-control form-control-sm" placeholder="R$"></div>
+                        </div>
+
+                        <button class="btn btn-primary w-100 btn-sm fw-bold mt-3" onclick="salvarTransportadora()"><i class="fas fa-save"></i> SALVAR TABELA NO SISTEMA</button>
+                        <div class="mt-3 pt-2 border-top text-center">
+                            <label class="form-label fw-bold small text-muted">Já tem a planilha pronta?</label>
+                            <input type="file" id="fileTabela" class="form-control form-control-sm" accept=".xlsx, .xls, .csv" onchange="importarTabelaTransp(this)">
+                        </div>
+                    </div>
+                    <hr>
+                    <div id="listaTransportadores">Carregando...</div>
+                </div>
+
+                <div class="tab-pane fade" id="tab-history">
+                    <div id="historyList"></div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary w-100 fw-bold" onclick="exportarBackupCompleto()">
-                    <i class="fas fa-download"></i> BAIXAR EXCEL TRATADO
+
+            <div class="footer-actions">
+                <button class="btn-backup" data-bs-toggle="modal" data-bs-target="#modalExport">
+                    <i class="fas fa-file-export"></i> RELATÓRIOS & BACKUP
                 </button>
             </div>
         </div>
-    </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="script.js"></script>
+        <div class="map-container">
+            <div id="map"></div>
+            <div class="map-stats" id="routeStats" style="display:none;">
+                <h6 class="fw-bold text-primary mb-1 small" id="statNome">Rota</h6>
+                <div class="mini-stat-time" id="statTempoTotal">--</div>
+                <div class="mini-stat-row mt-2"><i class="fas fa-road text-muted"></i> <span id="statDist">--</span></div>
+                <div class="mini-stat-row"><i class="fas fa-truck text-muted"></i> <strong id="statVeiculo">--</strong></div>
+                <div id="riskAlertBox" style="display:none;" class="risk-alert-bar"></div>
+            </div>
+            
+            <div class="finance-panel d-flex" id="financePanel" style="display:none;">
+                <div class="close-finance" onclick="document.getElementById('financePanel').style.display='none'">×</div>
+                <div class="finance-card" id="cardItinerante">
+                    <h5><i class="fas fa-truck"></i> Itinerante (Dedicado)</h5>
+                    <span class="price" id="valItinerante">R$ --</span>
+                    <span class="badge-pct" id="pctItinerante">--%</span>
+                    <div class="winner-tag">✅ MELHOR OPÇÃO</div>
+                    <div class="small text-muted mt-1" id="econItinerante"></div>
+                </div>
+                <div class="fw-bold text-muted px-2">VS</div>
+                <div class="finance-card" id="cardFracionado">
+                    <h5><i class="fas fa-boxes"></i> Fracionado (Tabela)</h5>
+                    <span class="price" id="valFracionado">R$ --</span>
+                    <span class="badge-pct" id="pctFracionado">--%</span>
+                    <div class="winner-tag">✅ MELHOR OPÇÃO</div>
+                    <div class="small text-muted mt-1" id="econFracionado"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalLogin" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white justify-content-center">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-user-lock"></i> Identificação</h5>
+                </div>
+                <div class="modal-body p-4 text-center">
+                    <p class="text-muted small mb-3">Para acessar o roteirizador, por favor identifique-se.</p>
+                    
+                    <div class="form-floating mb-3">
+                        <input type="text" class="form-control" id="loginNome" placeholder="Seu Nome">
+                        <label for="loginNome">Seu Nome Completo</label>
+                    </div>
+                    
+                    <div class="form-floating mb-4">
+                        <select class="form-select" id="loginCD">
+                            </select>
+                        <label for="loginCD">Sua Filial (CD)</label>
+                    </div>
+
+                    <button type="button" class="btn btn-primary w-100 py-2 fw-bold" onclick="realizarLogin()">
+                        ACESSAR SISTEMA <i class="fas fa-arrow-right ms-2"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalExport" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title fw-bold">Exportar Relatório Gerencial</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label small fw-bold">Período de Análise</label>
+                    <div class="d-flex gap-2">
+                        <input type="date" id="dateStart" class="form-control">
+                        <input type="date" id="dateEnd" class="form-control">
+                    </div>
+                    <div class="alert alert-info mt-3 small">
+                        <i class="fas fa-info-circle"></i> O arquivo conterá os campos novos: <b>Usuário Responsável</b> e <b>Filial de Origem</b>.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary w-100 fw-bold" onclick="exportarBackupCompleto()">
+                        <i class="fas fa-download"></i> BAIXAR EXCEL TRATADO
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalPedidos" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold" id="modalPedidosTitle">Gerenciar Rota</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="alert alert-info m-2 small">
+                        <i class="fas fa-info-circle"></i> Clique no <b>"X"</b> para remover o pedido desta rota e enviá-lo para <b>"Rotas Restantes"</b>.
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover align-middle mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th style="width: 50px;">Seq</th> <th>Pedido</th>
+                                    <th>Cidade</th> <th>Valor</th> <th>Peso</th> <th class="text-end">Mover</th>
+                                </tr>
+                            </thead>
+                            <tbody id="listaPedidosBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer justify-content-between bg-light">
+                    <div class="fw-bold small" id="modalResumo"></div>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="script.js"></script>
+
 </body>
 </html>

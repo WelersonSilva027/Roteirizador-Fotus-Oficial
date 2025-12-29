@@ -80,3 +80,23 @@ body, html { height: 100%; margin: 0; overflow: hidden; font-family: 'Segoe UI',
     margin-top: 4px;
     font-weight: 600;
 }
+
+/* Adicione isso ao seu <style> no index.html */
+.lista-pedidos-container {
+    max-height: 250px; /* Altura máxima da lista */
+    overflow-y: auto;  /* Barra de rolagem se passar da altura */
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    margin-top: 10px;
+}
+.lista-row {
+    border-bottom: 1px solid #eee;
+    padding: 4px 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.lista-row:last-child { border-bottom: none; }
+.lista-row:hover { background-color: #f8f9fa; }
