@@ -10,19 +10,22 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
+    <script src="https://cdn.jsdelivr.net/npm/imask"></script>
+
     <style>
         body { background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
         .card-header-custom { background: linear-gradient(135deg, #0d6efd, #0043a8); color: white; border-radius: 12px 12px 0 0 !important; }
-        .btn-submit { background-color: #198754; color: white; font-weight: bold; padding: 12px; }
+        .btn-submit { background-color: #198754; color: white; font-weight: bold; padding: 12px; transition: all 0.3s; }
+        .btn-submit:hover { background-color: #146c43; transform: translateY(-2px); }
         .detail-row { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 8px 0; font-size: 0.9rem; }
         .detail-label { color: #6c757d; }
         .detail-value { font-weight: bold; color: #212529; text-align: right; }
         
-        /* TIMELINE (ROTEIRO) */
+        /* TIMELINE */
         .timeline { position: relative; padding-left: 20px; margin-top: 15px; border-left: 2px solid #dee2e6; }
         .timeline-item { position: relative; margin-bottom: 15px; padding-left: 10px; }
         .timeline-item::before { content: ''; position: absolute; left: -26px; top: 5px; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 3px solid #0d6efd; }
-        .timeline-item.origin::before { border-color: #dc3545; background: #dc3545; } /* Origem Vermelha */
+        .timeline-item.origin::before { border-color: #dc3545; background: #dc3545; }
         .city-name { font-weight: bold; font-size: 0.9rem; color: #212529; display: block; }
         .city-meta { font-size: 0.75rem; color: #6c757d; }
     </style>
@@ -30,7 +33,7 @@
 <body>
     
 <div class="bg-white border-bottom py-2 px-3 mb-3 d-flex justify-content-between align-items-center shadow-sm">
-    <small class="text-muted fw-bold">FOTUS</small>
+    <small class="text-muted fw-bold">FOTUS LOGÍSTICA</small>
     <a href="vagas.html" class="text-decoration-none small fw-bold text-primary">
         <i class="fas fa-th-list"></i> Voltar ao Mural
     </a>
@@ -59,16 +62,14 @@
                 </div>
             </div>
 
-            <div class="detail-row"><span class="detail-label">Veículo:</span> <span class="detail-value" id="lblVeiculo">--</span></div>
+            <div class="detail-row"><span class="detail-label">Veículo Necessário:</span> <span class="detail-value" id="lblVeiculo">--</span></div>
             <div class="detail-row"><span class="detail-label">Distância Estimada:</span> <span class="detail-value" id="lblDist">--</span></div>
             
             <div class="mt-4">
-                <h6 class="fw-bold text-secondary small border-bottom pb-1 mb-2">📍 ROTEIRO DE ENTREGA</h6>
-                <div class="timeline" id="roteiroTimeline">
-                    </div>
-                
+                <h6 class="fw-bold text-secondary small border-bottom pb-1 mb-2">📍 ROTEIRO DA VIAGEM</h6>
+                <div class="timeline" id="roteiroTimeline"></div>
                 <button class="btn btn-outline-primary btn-sm w-100 mt-2 fw-bold" id="btnGoogleMaps" onclick="abrirGoogleMapsExterno()">
-                    <i class="fas fa-map-marked-alt"></i> VER TRAJETO NO MAPA
+                    <i class="fas fa-map-marked-alt"></i> VER NO GOOGLE MAPS
                 </button>
             </div>
         </div>
@@ -77,17 +78,31 @@
     <div class="card shadow border-0 rounded-3" id="formCard">
         <div class="card-body p-4">
             <h6 class="fw-bold mb-3 text-primary"><i class="fas fa-hand-holding-usd"></i> Enviar Proposta</h6>
+            <div class="alert alert-warning small"><i class="fas fa-exclamation-circle"></i> Seus dados serão salvos para receber futuras ofertas automaticamente.</div>
             
             <form id="bidForm" onsubmit="enviarCotação(event)">
-                <div class="mb-3">
-                    <label class="form-label small fw-bold">Seu Nome / Motorista</label>
-                    <input type="text" id="motorista" class="form-control bg-light" placeholder="Ex: João Silva" required>
+                
+                <div class="row mb-3">
+                    <div class="col-12 mb-2">
+                        <label class="form-label small fw-bold">Seu Nome Completo</label>
+                        <input type="text" id="motorista" class="form-control bg-light" placeholder="Ex: João Silva" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small fw-bold">WhatsApp / Celular</label>
+                        <input type="tel" id="contatoTel" class="form-control bg-light" placeholder="(00) 00000-0000" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small fw-bold">E-mail</label>
+                        <input type="email" id="contatoEmail" class="form-control bg-light" placeholder="email@exemplo.com" required>
+                    </div>
                 </div>
                 
                 <div class="mb-3">
                     <label class="form-label small fw-bold">Transportadora (Opcional)</label>
                     <input type="text" id="empresa" class="form-control bg-light" placeholder="Ex: TransSilva">
                 </div>
+
+                <hr>
 
                 <div class="row">
                     <div class="col-6 mb-3">
@@ -111,7 +126,7 @@
 
                 <div class="mb-3">
                     <label class="form-label small fw-bold">Observações</label>
-                    <textarea id="obs" class="form-control bg-light" rows="2" placeholder="Ex: Preciso de adiantamento..."></textarea>
+                    <textarea id="obs" class="form-control bg-light" rows="2" placeholder="Ex: Preciso de adiantamento, carrego amanhã..."></textarea>
                 </div>
 
                 <button type="submit" class="btn btn-submit w-100 shadow rounded-pill text-uppercase">
@@ -124,7 +139,7 @@
     <div id="successMsg" class="text-center mt-5" style="display:none;">
         <div class="display-1 text-success mb-3"><i class="fas fa-check-circle"></i></div>
         <h3 class="fw-bold text-dark">Proposta Enviada!</h3>
-        <p class="text-muted mb-4">Sua oferta foi registrada com sucesso.</p>
+        <p class="text-muted mb-4">Sua oferta foi registrada e seus dados foram atualizados em nosso cadastro.</p>
         <div class="d-grid gap-2 col-10 mx-auto">
             <a href="vagas.html" class="btn btn-primary btn-lg fw-bold shadow rounded-pill">
                 <i class="fas fa-list-alt"></i> VER MAIS CARGAS
@@ -132,12 +147,11 @@
         </div>
     </div>
     
-    <div class="text-center mt-4 mb-3 text-muted small">
-        © 2025 FOTUS Logística
-    </div>
+    <div class="text-center mt-4 mb-3 text-muted small">© 2025 FOTUS Logística</div>
 </div>
 
 <script>
+    // CONFIGURAÇÃO FIREBASE
     const firebaseConfig = {
         apiKey: "AIzaSyARALEOLxIb7TlsSRqI0fdNfY8D-SgcYbY",
         authDomain: "roteirizadorfotus.firebaseapp.com",
@@ -152,80 +166,75 @@
 
     const urlParams = new URLSearchParams(window.location.search);
     const opId = urlParams.get('op');
-    let rotaGlobal = null; // Para usar no botão do mapa
+    let rotaGlobal = null;
 
     if(!opId) document.body.innerHTML = "<h3 class='text-center mt-5 text-danger'>Link Inválido</h3>";
 
-    // CARREGAR DADOS
+    // MÁSCARA DE TELEFONE (Melhoria de UX)
+    document.addEventListener('DOMContentLoaded', () => {
+        const telInput = document.getElementById('contatoTel');
+        if(telInput && window.IMask) {
+            IMask(telInput, { mask: '(00) 00000-0000' });
+        }
+    });
+
+    // CARREGAR DADOS DA ROTA
     db.collection("historico").where("id_operacao", "==", opId).limit(1).get().then(snapshot => {
         if(snapshot.empty) {
-            document.body.innerHTML = "<div class='alert alert-warning m-3'>Esta carga não está mais disponível.</div>";
+            document.body.innerHTML = "<div class='alert alert-warning m-3 text-center'><h5>Carga Indisponível</h5><p>Esta rota pode ter sido removida ou já finalizada.</p><a href='vagas.html' class='btn btn-primary'>Ver Outras Cargas</a></div>";
             return;
         }
-        
         const doc = snapshot.docs[0].data();
         let detalhes = {};
         try { detalhes = JSON.parse(doc.dados_json); } catch(e){}
-        
-        rotaGlobal = detalhes; // Salva para o mapa
+        rotaGlobal = detalhes;
 
-        document.getElementById('opTitle').innerText = doc.nome_rota || "Rota sem nome";
+        document.getElementById('opTitle').innerText = doc.nome_rota || "Rota";
         document.getElementById('opId').innerText = `ID: ${doc.id_operacao}`;
         document.getElementById('lblVeiculo').innerText = doc.veiculo;
         document.getElementById('lblPeso').innerText = (detalhes.peso_total || 0).toLocaleString('pt-BR') + " kg";
         document.getElementById('lblDist').innerText = (doc.total_km || 0).toFixed(1) + " km";
         document.getElementById('lblValorCarga').innerText = (detalhes.valor_total || 0).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
 
-        // MONTAR TIMELINE (ROTEIRO)
+        // Monta Timeline
         const timeline = document.getElementById('roteiroTimeline');
         timeline.innerHTML = "";
-
-        // 1. Origem
-        const origemNome = detalhes.origem ? detalhes.origem.nome : "CD Origem";
-        timeline.innerHTML += `
-        <div class="timeline-item origin">
-            <span class="city-name text-danger">ORIGEM: ${origemNome}</span>
-            <span class="city-meta">Ponto de Coleta</span>
-        </div>`;
-
-        // 2. Pedidos/Cidades
-        if(detalhes.pedidos && detalhes.pedidos.length > 0) {
+        const origemNome = detalhes.origem ? detalhes.origem.nome : "Origem";
+        timeline.innerHTML += `<div class="timeline-item origin"><span class="city-name text-danger">ORIGEM: ${origemNome}</span><span class="city-meta">Coleta</span></div>`;
+        if(detalhes.pedidos) {
             detalhes.pedidos.forEach((p, idx) => {
-                // Tenta limpar o endereço para mostrar Cidade - UF
-                let textoExibicao = p.ENDERECO;
-                // Se tiver UF separado, tenta destacar
-                const meta = p.UF && p.UF.length === 2 ? `${p.PESO}kg • ${p.UF}` : `${p.PESO}kg`;
-                
-                timeline.innerHTML += `
-                <div class="timeline-item">
-                    <span class="city-name">${textoExibicao}</span>
-                    <span class="city-meta">Entrega #${idx+1} (${meta})</span>
-                </div>`;
+                const meta = p.UF ? `${p.PESO}kg • ${p.UF}` : `${p.PESO}kg`;
+                timeline.innerHTML += `<div class="timeline-item"><span class="city-name">${p.ENDERECO}</span><span class="city-meta">Entrega #${idx+1} (${meta})</span></div>`;
             });
         }
     });
 
     function abrirGoogleMapsExterno() {
-        if(!rotaGlobal || !rotaGlobal.origem || !rotaGlobal.pedidos) return alert("Erro nos dados da rota.");
-        
+        if(!rotaGlobal || !rotaGlobal.origem || !rotaGlobal.pedidos) return alert("Erro nos dados.");
         const origin = `${rotaGlobal.origem.coords[1]},${rotaGlobal.origem.coords[0]}`;
         const destinations = rotaGlobal.pedidos.map(p => `${p.lat},${p.lon}`).join('/');
-        
-        // Abre URL direta do Google Maps Directions
-        const url = `https://www.google.com/maps/dir/${origin}/${destinations}`;
-        window.open(url, '_blank');
+        window.open(`https://www.google.com/maps/dir/${origin}/${destinations}`, '_blank');
     }
 
+    // --- FUNÇÃO PRINCIPAL: SALVA OFERTA E CADASTRO ---
     function enviarCotação(e) {
         e.preventDefault();
         const btn = document.querySelector('.btn-submit');
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
         btn.disabled = true;
 
-        const data = {
+        const nome = document.getElementById('motorista').value;
+        const empresa = document.getElementById('empresa').value;
+        const email = document.getElementById('contatoEmail').value.trim().toLowerCase();
+        const telefone = document.getElementById('contatoTel').value;
+
+        // 1. Dados da Oferta (Cotação Específica)
+        const ofertaData = {
             id_operacao: opId,
-            motorista: document.getElementById('motorista').value,
-            empresa: document.getElementById('empresa').value,
+            motorista: nome,
+            empresa: empresa,
+            contato_email: email, // Novo
+            contato_tel: telefone, // Novo
             valor_oferta: parseFloat(document.getElementById('valor').value),
             prazo: document.getElementById('prazo').value + " dias",
             modalidade: document.getElementById('modalidade').value,
@@ -234,14 +243,42 @@
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         };
 
-        db.collection("cotacoes").add(data).then(() => {
+        // 2. Dados do Cadastro (Banco de Transportadores)
+        // Usamos o E-mail como "Chave" para não duplicar. Se já existe, atualiza.
+        const cadastroData = {
+            nome: nome,
+            empresa: empresa,
+            email: email,
+            telefone: telefone,
+            ultimo_lance_em: firebase.firestore.FieldValue.serverTimestamp(),
+            origem_cadastro: "Portal de Cotação",
+            status_ativo: true
+        };
+
+        // Usamos Batch para salvar os dois de uma vez
+        const batch = db.batch();
+
+        // A) Cria nova oferta na coleção 'cotacoes'
+        const ofertaRef = db.collection("cotacoes").doc(); 
+        batch.set(ofertaRef, ofertaData);
+
+        // B) Atualiza ou Cria cadastro na coleção 'transportadores_cadastrados'
+        // Criamos um ID baseado no email (substituindo caracteres especiais) para evitar duplicidade
+        const cadastroId = email.replace(/[^a-zA-Z0-9]/g, "_");
+        const cadastroRef = db.collection("transportadores_cadastrados").doc(cadastroId);
+        // 'merge: true' garante que não apagamos outros dados se o cadastro já existir
+        batch.set(cadastroRef, cadastroData, { merge: true });
+
+        // Executa
+        batch.commit().then(() => {
             document.getElementById('formCard').style.display = 'none';
             document.getElementById('successMsg').style.display = 'block';
             window.scrollTo(0,0);
         }).catch(err => {
-            alert("Erro: " + err.message);
+            console.error(err);
+            alert("Erro ao enviar: " + err.message);
             btn.disabled = false;
-            btn.innerText = "TENTAR NOVAMENTE";
+            btn.innerHTML = 'TENTAR NOVAMENTE';
         });
     }
 </script>

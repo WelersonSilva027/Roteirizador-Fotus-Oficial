@@ -54,7 +54,6 @@ const CDS_FOTUS = [
     { key: "CD Ananindeua - PA", nome: "CD Ananindeua - PA", coords: [-48.375, -1.366] },
     { key: "CD Cabo - PE", nome: "CD Cabo - PE", coords: [-35.035, -8.286] },
     { key: "CD Feira - BA", nome: "CD Feira - BA", coords: [-38.966, -12.266] },
-    { key: "Matriz Administrativa", nome: "Matriz Administrativa", coords: [-40.338, -20.322] }
 ];
 
 CDS_FOTUS.forEach(cd => pedidosPorCD[cd.key] = []);
