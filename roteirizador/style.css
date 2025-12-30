@@ -100,3 +100,52 @@ body, html { height: 100%; margin: 0; overflow: hidden; font-family: 'Segoe UI',
 }
 .lista-row:last-child { border-bottom: none; }
 .lista-row:hover { background-color: #f8f9fa; }
+
+/* ESTILOS PARA SIDEBAR AJUSTÁVEL */
+    /* GARANTE O LAYOUT FLEXÍVEL */
+    .app-container {
+        display: flex; /* Sidebar, Resizer e Mapa lado a lado */
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    /* SIDEBAR AJUSTÁVEL */
+    .sidebar {
+        width: 400px; /* Largura inicial */
+        min-width: 300px; /* Largura mínima (para não sumir) */
+        max-width: 50%;   /* Largura máxima (para não cobrir o mapa todo) */
+        flex-shrink: 0;   /* Impede que ela encolha sozinha */
+        background: white;
+        border-right: 1px solid #ddd;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        z-index: 10;
+    }
+
+    /* BARRA DE ARRASTO (RESIZER) */
+    .resizer {
+        width: 5px;
+        background-color: #f1f1f1;
+        cursor: col-resize; /* Mostra o cursor de redimensionar */
+        flex-shrink: 0;
+        transition: background 0.2s;
+        border-right: 1px solid #e0e0e0;
+    }
+
+    /* Efeito ao passar o mouse ou arrastar */
+    .resizer:hover, .resizer.resizing {
+        background-color: #0d6efd; /* Fica azul para indicar interação */
+        width: 5px;
+    }
+
+    /* MAPA */
+    .map-container {
+        flex-grow: 1; /* Ocupa o restante do espaço */
+        position: relative;
+        height: 100%;
+        width: 0; /* Truque para o mapa não estourar o flexbox */
+    }
+    
+    /* ... mantenha o resto dos seus estilos ... */
