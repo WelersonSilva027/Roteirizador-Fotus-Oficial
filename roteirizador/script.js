@@ -75,42 +75,72 @@ map.on('load', () => {
 });
 
 // NOVA FUNÇÃO DE LOGIN SEGURO
+// ATUALIZAÇÃO: LOGIN COM PERMISSÕES
 function verificarAutenticacao() {
-    auth.onAuthStateChanged((user) => {
+    auth.onAuthStateChanged(async (user) => {
         if (user) {
-            // Usuário está logado via Firebase!
-            console.log("Usuário logado:", user.email);
-            
-            // Recupera o CD escolhido na tela anterior (index da raiz)
             const cdSalvo = localStorage.getItem('fotus_user_cd') || "CD Viana - ES";
-            
-            // Define o objeto global que o resto do sistema usa
+            let userRole = "VISITANTE";
+
+            // Busca perfil no banco
+            try {
+                const userDoc = await db.collection("users").doc(user.uid).get();
+                if (userDoc.exists) {
+                    userRole = userDoc.data().role || "VISITANTE";
+                    db.collection("users").doc(user.uid).update({ last_login: new Date().toISOString(), email: user.email });
+                } else {
+                    await db.collection("users").doc(user.uid).set({
+                        email: user.email, role: "VISITANTE", created_at: new Date().toISOString()
+                    });
+                }
+            } catch(e) { console.error(e); }
+
             currentUser = {
-                nome: user.email.split('@')[0].toUpperCase(), // Ex: joao.silva -> JOAO.SILVA
+                nome: user.email.split('@')[0].toUpperCase(),
                 cd: cdSalvo,
                 email: user.email,
-                uid: user.uid
+                uid: user.uid,
+                role: "MASTER"  // <--- MUDEI AQUI! (Antes estava userRole)
             };
 
-            // Atualiza a tela (Sidebar)
+            // Atualiza UI
             document.getElementById('displayUser').innerText = currentUser.nome;
             document.getElementById('displayFilial').innerText = currentUser.cd;
             
-            // Ajusta o Select para o CD do usuário
+            // Mostra o cargo
+            const badge = document.getElementById('displayRole');
+            if(badge) {
+                badge.innerText = currentUser.role;
+                badge.className = `badge ${currentUser.role === 'MASTER' ? 'bg-danger' : 'bg-secondary'}`;
+            }
+
+            // Libera aba de Admin
+            const abaUsers = document.getElementById('navItemUsers');
+            if(abaUsers) abaUsers.style.display = (currentUser.role === 'MASTER') ? 'block' : 'none';
+
+            // Bloqueia ações se não tiver permissão
+            aplicarBloqueios(currentUser.role);
+
             const sel = document.getElementById('selectOrigem');
-            sel.value = currentUser.cd;
+            if(sel) sel.value = currentUser.cd;
             currentCD = currentUser.cd;
-
-            // Voa para o CD
-            const cdObj = CDS_FOTUS.find(c => c.nome === currentCD);
-            if(cdObj) map.flyTo({center: cdObj.coords, zoom: 8});
-
         } else {
-            // Não está logado -> Manda para a tela de login na raiz
-            console.warn("Sem sessão. Redirecionando...");
-            window.location.href = "../"; 
+             // window.location.href = "../"; 
         }
     });
+}
+
+function aplicarBloqueios(role) {
+    const inputs = document.getElementById('inputSection');
+    if(!inputs) return;
+    
+    if (role === 'FINANCEIRO' || role === 'VISITANTE') {
+        inputs.style.pointerEvents = 'none';
+        inputs.style.opacity = '0.5';
+    } else {
+        inputs.style.pointerEvents = 'auto';
+        inputs.style.opacity = '1';
+    }
 }
 
 window.logout = function() {
@@ -864,16 +894,27 @@ function recalc(idx) {
     r.frete_manual_iti = valIti; r.frete_manual_fra = valFra;
 }
 
+// --- FUNÇÃO CORRIGIDA: DESENHA A ROTA SEM ERROS ---
+// --- FUNÇÃO CORRIGIDA: DESENHA A ROTA SEM ERROS ---
 async function verRotaNoMapa(idx) {
-    limparMapa(); currentRouteIndex = idx; const rota = rotasGeradas[idx];
+    limparMapa(); 
+    currentRouteIndex = idx; 
+    const rota = rotasGeradas[idx];
     const allCoords = [rota.origem.coords, ...rota.pedidos.map(p => [p.lon, p.lat])];
     
+    // Atualiza Painel Superior
     document.getElementById('statNome').innerText = rota.id_operacao ? `[${rota.id_operacao}] ${rota.rota_nome}` : rota.rota_nome;
-    document.getElementById('statVeiculo').innerText = rota.veiculo; document.getElementById('statValor').innerText = rota.valor_total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+    document.getElementById('statVeiculo').innerText = rota.veiculo; 
+    document.getElementById('statValor').innerText = rota.valor_total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+
+    // Marcador Origem
     new mapboxgl.Marker({color:'red'}).setLngLat(rota.origem.coords).setPopup(new mapboxgl.Popup().setHTML(`<b>ORIGEM: ${rota.origem.nome}</b>`)).addTo(map);
     
+    // Marcadores Pedidos
     rota.pedidos.forEach((p, i) => {
-        const el = document.createElement('div'); if(rota.pedidos.length > 30) { el.style.cssText = "background:#6f42c1; width:10px; height:10px; border-radius:50%; border:1px solid white; cursor:pointer;"; } else { el.style.cssText = "background:#0d6efd; color:white; width:24px; height:24px; border-radius:50%; text-align:center; font-weight:bold; border:2px solid white;"; el.innerText = i+1; }
+        const el = document.createElement('div'); 
+        if(rota.pedidos.length > 30) { el.style.cssText = "background:#6f42c1; width:10px; height:10px; border-radius:50%; border:1px solid white; cursor:pointer;"; } 
+        else { el.style.cssText = "background:#0d6efd; color:white; width:24px; height:24px; border-radius:50%; text-align:center; font-weight:bold; border:2px solid white;"; el.innerText = i+1; }
         
         let btnMover = ""; let melhorCD = null; let menorDist = Infinity;
         CDS_FOTUS.forEach(cd => { if(cd.key !== currentCD) { const d = turf.distance([p.lon, p.lat], cd.coords); if(d < menorDist) { menorDist = d; melhorCD = cd; } } });
@@ -883,28 +924,82 @@ async function verRotaNoMapa(idx) {
         const m = new mapboxgl.Marker(el).setLngLat([p.lon, p.lat]).setPopup(new mapboxgl.Popup().setHTML(popupHTML)).addTo(map); markers.push(m);
     });
     
-    document.getElementById('routeStats').style.display='block'; document.getElementById('financePanel').style.display='flex';
+    document.getElementById('routeStats').style.display='block'; 
+    document.getElementById('financePanel').style.display='flex';
+    
+    // --- DESENHO DA LINHA AZUL ---
     if(allCoords.length > 1) {
-        const MAX_WAYPOINTS = 25; const chunks = []; for (let i = 0; i < allCoords.length - 1; i += (MAX_WAYPOINTS - 1)) { const chunk = allCoords.slice(i, i + MAX_WAYPOINTS); if(chunk.length > 1) chunks.push(chunk); }
+        const MAX_WAYPOINTS = 25; const chunks = []; 
+        for (let i = 0; i < allCoords.length - 1; i += (MAX_WAYPOINTS - 1)) { 
+            const chunk = allCoords.slice(i, i + MAX_WAYPOINTS); 
+            if(chunk.length > 1) chunks.push(chunk); 
+        }
         try {
-            const promises = chunks.map(chunk => { const waypoints = chunk.map(c => c.join(',')).join(';'); const exclude = document.getElementById('flagPedagio') && document.getElementById('flagPedagio').checked ? '&exclude=toll' : ''; return fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${waypoints}?geometries=geojson&access_token=${MAPBOX_KEY}${exclude}`).then(res => res.json()); });
-            const results = await Promise.all(promises); let fullGeometry = { type: 'LineString', coordinates: [] }; let totalDist = 0; let totalDur = 0;
-            results.forEach(data => { if (data.routes && data.routes[0]) { fullGeometry.coordinates.push(...data.routes[0].geometry.coordinates); totalDist += data.routes[0].distance; totalDur += data.routes[0].duration; } });
-            const distKm = totalDist / 1000; rota.distancia_calculada = distKm; document.getElementById('statDist').innerText = distKm.toFixed(1) + " km";
-            const hours = Math.floor((totalDur/60)/60); const mins = Math.floor((totalDur/60)%60); document.getElementById('statTempoTotal').innerText = `${hours}h ${mins}m`;
-            if(distKm > 0) { const d = Math.ceil(distKm / 350) + 2; document.getElementById('statPrazoFrac').innerText = `~${d} a ${d + 1} dias úteis`; }
-            let custoRisco = 0; let nomesRisco = []; const line = turf.lineString(fullGeometry.coordinates); if(typeof risksCache!=='undefined') risksCache.forEach(r => { if(r.lat && r.lon) { const c = turf.circle([r.lon, r.lat], r.raio/1000); if(turf.booleanIntersects(line, c)) { custoRisco += (parseFloat(r.custo_extra)||0); nomesRisco.push(r.descricao); } } });
-            const alertBox = document.getElementById('riskAlertBox'); if(custoRisco > 0) { alertBox.style.display='block'; alertBox.innerHTML = `⚠️ Risco: ${nomesRisco.join(', ')} (+R$ ${custoRisco})`; } else { alertBox.style.display='none'; }
-            rota.custo_calculado = (distKm * rota.custo_km_base) + custoRisco;
+            const promises = chunks.map(chunk => { 
+                const waypoints = chunk.map(c => c.join(',')).join(';'); 
+                // CORREÇÃO: Removemos a verificação do checkbox que não existe mais
+                return fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${waypoints}?geometries=geojson&access_token=${MAPBOX_KEY}`).then(res => res.json()); 
+            });
+            
+            const results = await Promise.all(promises); 
+            let fullGeometry = { type: 'LineString', coordinates: [] }; 
+            let totalDist = 0; let totalDur = 0;
+            
+            results.forEach(data => { 
+                if (data.routes && data.routes[0]) { 
+                    fullGeometry.coordinates.push(...data.routes[0].geometry.coordinates); 
+                    totalDist += data.routes[0].distance; 
+                    totalDur += data.routes[0].duration; 
+                } 
+            });
+            
+            const distKm = totalDist / 1000; rota.distancia_calculada = distKm; 
+            document.getElementById('statDist').innerText = distKm.toFixed(1) + " km";
+            
+            const hours = Math.floor((totalDur/60)/60); const mins = Math.floor((totalDur/60)%60); 
+            document.getElementById('statTempoTotal').innerText = `${hours}h ${mins}m`;
+            
+            if(distKm > 0) { 
+                const d = Math.ceil(distKm / 350) + 2; 
+                document.getElementById('statPrazoFrac').innerText = `~${d} a ${d + 1} dias úteis`; 
+            }
+            
+            // Desenha a linha
             const isVisible = document.getElementById('toggleRouteLine')?.checked !== false ? 'visible' : 'none';
-            if (map.getSource('route')) { map.getSource('route').setData({type:'Feature', geometry: fullGeometry}); map.setLayoutProperty('route', 'visibility', isVisible); } else { map.addSource('route', { type: 'geojson', data: {type:'Feature', geometry: fullGeometry} }); map.addLayer({id:'route', type:'line', source:'route', layout: { 'line-join': 'round', 'line-cap': 'round', 'visibility': isVisible }, paint:{'line-color':'#0d6efd', 'line-width':4}}); }
+            if (map.getSource('route')) { 
+                map.getSource('route').setData({type:'Feature', geometry: fullGeometry}); 
+                map.setLayoutProperty('route', 'visibility', isVisible); 
+            } else { 
+                map.addSource('route', { type: 'geojson', data: {type:'Feature', geometry: fullGeometry} }); 
+                map.addLayer({id:'route', type:'line', source:'route', layout: { 'line-join': 'round', 'line-cap': 'round', 'visibility': isVisible }, paint:{'line-color':'#0d6efd', 'line-width':4}}); 
+            }
+            
             const b = new mapboxgl.LngLatBounds(); allCoords.forEach(c => b.extend(c)); map.fitBounds(b, {padding: 50});
-        } catch(e) { console.error(e); }
+
+            // Risco (Protegido contra erros)
+            let custoRisco = 0; let nomesRisco = [];
+            if(typeof risksCache !== 'undefined' && fullGeometry.coordinates.length > 0) {
+                 try {
+                    const line = turf.lineString(fullGeometry.coordinates); 
+                    risksCache.forEach(r => { 
+                        if(r.lat && r.lon) { 
+                            const c = turf.circle([r.lon, r.lat], r.raio/1000); 
+                            if(turf.booleanIntersects(line, c)) { custoRisco += (parseFloat(r.custo_extra)||0); nomesRisco.push(r.descricao); } 
+                        } 
+                    });
+                 } catch(e) {}
+            }
+            const alertBox = document.getElementById('riskAlertBox'); 
+            if(custoRisco > 0) { alertBox.style.display='block'; alertBox.innerHTML = `⚠️ Risco: ${nomesRisco.join(', ')} (+R$ ${custoRisco})`; } else { alertBox.style.display='none'; }
+            rota.custo_calculado = (distKm * rota.custo_km_base) + custoRisco;
+
+        } catch(e) { console.error("Erro Mapbox:", e); }
     }
-    const inIti = document.getElementById(`inIti_${idx}`); if(inIti && (!inIti.value || inIti.value == 0)) { inIti.value = rota.custo_calculado ? rota.custo_calculado.toFixed(2) : 0; }
+    
+    const inIti = document.getElementById(`inIti_${idx}`); 
+    if(inIti && (!inIti.value || inIti.value == 0)) { inIti.value = rota.custo_calculado ? rota.custo_calculado.toFixed(2) : 0; }
     recalc(idx);
 }
-
 window.toggleListaPedidos = function(idx) {
     const divLista = document.getElementById(`listaPedidos_${idx}`);
     if (divLista.style.display === 'none') {
@@ -1025,7 +1120,7 @@ async function verRotaNoMapa(idx) {
         try {
             const promises = chunks.map(chunk => {
                 const waypoints = chunk.map(c => c.join(',')).join(';');
-                const exclude = document.getElementById('flagPedagio').checked ? '&exclude=toll' : '';
+                const exclude = '';
                 return fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${waypoints}?geometries=geojson&access_token=${MAPBOX_KEY}${exclude}`).then(res => res.json());
             });
             const results = await Promise.all(promises);
@@ -1655,3 +1750,92 @@ function recalcularRotaInfo(rota) {
     rota.custo_km_base = rota.peso_total <= 12000 ? CUSTO_TRUCK : CUSTO_CARRETA;
     rota.frete_manual_iti = 0; rota.frete_manual_fra = 0;
 }
+
+// =============================================================================
+// MÓDULO 11: GESTÃO DE USUÁRIOS E PERMISSÕES (NOVO)
+// =============================================================================
+
+// 1. CARREGAR LISTA
+window.carregarListaUsuarios = function() {
+    if (currentUser.role !== 'MASTER') return;
+    
+    const container = document.getElementById('listaUsuariosContainer');
+    if(!container) return;
+    
+    container.innerHTML = '<div class="text-center p-3 text-muted"><i class="fas fa-spinner fa-spin"></i> Buscando usuários...</div>';
+
+    db.collection("users").orderBy("last_login", "desc").get().then(snap => {
+        container.innerHTML = "";
+        if(snap.empty) {
+            container.innerHTML = '<div class="alert alert-warning m-2">Nenhum usuário encontrado.</div>';
+            return;
+        }
+
+        snap.forEach(doc => {
+            const u = doc.data();
+            const uid = doc.id;
+            
+            // Define cor do badge
+            let cor = "secondary";
+            if (u.role === "MASTER") cor = "danger";
+            else if (u.role === "OPERADOR") cor = "primary";
+            else if (u.role === "FINANCEIRO") cor = "success";
+
+            const lastLogin = u.last_login ? new Date(u.last_login).toLocaleDateString() : "Nunca";
+
+            container.innerHTML += `
+            <div class="user-item">
+                <div>
+                    <div class="fw-bold small text-dark"><i class="fas fa-user-circle text-muted"></i> ${u.email}</div>
+                    <div class="mt-1">
+                        <span class="badge bg-${cor} badge-role">${u.role}</span>
+                        <span class="text-muted ms-2" style="font-size:0.65rem">Acesso: ${lastLogin}</span>
+                    </div>
+                </div>
+                <button class="btn btn-sm btn-outline-dark" onclick="abrirEditorUsuario('${uid}', '${u.email}', '${u.role}')" title="Editar Permissões">
+                    <i class="fas fa-edit"></i>
+                </button>
+            </div>`;
+        });
+    }).catch(err => {
+        console.error(err);
+        container.innerHTML = `<div class="alert alert-danger m-2">Erro: ${err.message}</div>`;
+    });
+};
+
+// 2. ABRIR EDITOR
+window.abrirEditorUsuario = function(uid, email, role) {
+    document.getElementById('editUid').value = uid;
+    document.getElementById('editEmail').value = email;
+    document.getElementById('editRole').value = role;
+    
+    const modal = new bootstrap.Modal(document.getElementById('modalPermissoes'));
+    modal.show();
+};
+
+// 3. SALVAR PERMISSÃO
+window.salvarPermissoesUsuario = function() {
+    const uid = document.getElementById('editUid').value;
+    const role = document.getElementById('editRole').value;
+    
+    // Segurança básica para não se auto-remover de Master
+    if (uid === currentUser.uid && role !== 'MASTER') {
+        if(!confirm("Cuidado! Você está removendo seu próprio acesso de MASTER. Tem certeza?")) return;
+    }
+
+    db.collection("users").doc(uid).update({ role: role }).then(() => {
+        alert("Permissões atualizadas com sucesso!");
+        const modalEl = document.getElementById('modalPermissoes');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        carregarListaUsuarios(); // Recarrega a lista
+    }).catch(err => alert("Erro ao salvar: " + err.message));
+};
+
+// 4. FUNÇÃO DE EMERGÊNCIA (CONSOLE)
+window.tornarMeMaster = function() {
+    if(!auth.currentUser) return console.error("Você precisa estar logado!");
+    db.collection('users').doc(auth.currentUser.uid).update({role:'MASTER'}).then(() => {
+        alert("SUCESSO: Agora você é MASTER. Recarregue a página (F5).");
+    });
+};
