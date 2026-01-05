@@ -51,8 +51,11 @@ ________________________________________________________________________________
 
 5. Status Atual do Projeto
 ✅ Infraestrutura: Configurada e rodando no Netlify + Firebase.
+
 ✅ Roteirização: 100% funcional (Importação, Mapa, Cálculo de Custo).
+
 ✅ Portal do Motorista: 100% funcional (Visualização de Rota, Envio de Oferta e Cadastro Automático).
+
 ✅ Automação: Teste validado via Zapier (Disparo de E-mail via Gmail).
 ________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________
 Próximos Passos e Atualizações
