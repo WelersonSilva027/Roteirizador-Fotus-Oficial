@@ -50,6 +50,7 @@ o	Link Único que leva direto para a tela de cotação daquela rota específica.
 ________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________
 
 5. Status Atual do Projeto
+   
 ✅ Infraestrutura: Configurada e rodando no Netlify + Firebase.
 
 ✅ Roteirização: 100% funcional (Importação, Mapa, Cálculo de Custo).
