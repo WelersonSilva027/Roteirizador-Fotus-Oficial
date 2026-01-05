@@ -148,4 +148,3 @@ body, html { height: 100%; margin: 0; overflow: hidden; font-family: 'Segoe UI',
         width: 0; /* Truque para o mapa não estourar o flexbox */
     }
     
-    /* ... mantenha o resto dos seus estilos ... */
