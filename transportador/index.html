@@ -62,6 +62,8 @@
                 </div>
             </div>
 
+            
+
             <div class="detail-row"><span class="detail-label">Veículo Necessário:</span> <span class="detail-value" id="lblVeiculo">--</span></div>
             <div class="detail-row"><span class="detail-label">Distância Estimada:</span> <span class="detail-value" id="lblDist">--</span></div>
             
@@ -104,6 +106,18 @@
 
                 <hr>
 
+                <div id="boxTarget" class="card border-success mb-3 shadow-sm" style="display:none; background-color: #d1e7dd;">
+    <div class="card-body text-center p-2">
+        <small class="text-success fw-bold text-uppercase" style="letter-spacing: 1px;">
+            <i class="fas fa-bullseye"></i> Meta de Frete / Target
+        </small>
+        <div class="h2 fw-bold text-dark m-0 mt-1" id="lblTargetValue">R$ --</div>
+        <small class="text-muted fst-italic" style="font-size: 0.75rem;">
+            Tente enviar sua oferta próxima a este valor.
+        </small>
+    </div>
+</div>
+
                 <div class="row">
                     <div class="col-6 mb-3">
                         <label class="form-label small fw-bold text-success">Valor do Frete (R$)</label>
@@ -114,6 +128,7 @@
                         <input type="number" id="prazo" class="form-control form-control-lg" placeholder="Ex: 2" required>
                     </div>
                 </div>
+
 
                 <div class="mb-3">
                     <label class="form-label small fw-bold">Modalidade</label>
@@ -147,7 +162,7 @@
         </div>
     </div>
     
-    <div class="text-center mt-4 mb-3 text-muted small">© 2025 FOTUS Logística</div>
+    <div class="text-center mt-4 mb-3 text-muted small">Fotus Distribuidora Solar © 2025</div>
 </div>
 
 <script>
@@ -161,62 +176,103 @@
         appId: "1:597979098930:web:b8fb54a0ffc160e39a312b",
         measurementId: "G-Z3P42WF5HD"
     };
+    
+    // Inicializa Firebase apenas uma vez
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
+    // Pega o ID da URL
     const urlParams = new URLSearchParams(window.location.search);
     const opId = urlParams.get('op');
     let rotaGlobal = null;
 
-    if(!opId) document.body.innerHTML = "<h3 class='text-center mt-5 text-danger'>Link Inválido</h3>";
+    // Se não tiver ID na URL, mostra erro
+    if(!opId) {
+        document.body.innerHTML = "<div class='container mt-5'><div class='alert alert-danger text-center shadow'><h4>Link Inválido ou Incompleto</h4><p>Verifique o link enviado.</p></div></div>";
+    }
 
-    // MÁSCARA DE TELEFONE (Melhoria de UX)
+    // MÁSCARA DE TELEFONE
     document.addEventListener('DOMContentLoaded', () => {
         const telInput = document.getElementById('contatoTel');
         if(telInput && window.IMask) {
             IMask(telInput, { mask: '(00) 00000-0000' });
         }
+        
+        // Se tiver ID, carrega os dados
+        if(opId) carregarDadosRota();
     });
 
-    // CARREGAR DADOS DA ROTA
-    db.collection("historico").where("id_operacao", "==", opId).limit(1).get().then(snapshot => {
-        if(snapshot.empty) {
-            document.body.innerHTML = "<div class='alert alert-warning m-3 text-center'><h5>Carga Indisponível</h5><p>Esta rota pode ter sido removida ou já finalizada.</p><a href='vagas.html' class='btn btn-primary'>Ver Outras Cargas</a></div>";
-            return;
-        }
-        const doc = snapshot.docs[0].data();
-        let detalhes = {};
-        try { detalhes = JSON.parse(doc.dados_json); } catch(e){}
-        rotaGlobal = detalhes;
+    // FUNÇÃO PARA CARREGAR DADOS DA ROTA
+    function carregarDadosRota() {
+        db.collection("historico").where("id_operacao", "==", opId).limit(1).get()
+        .then(snapshot => {
+            if(snapshot.empty) {
+                document.body.innerHTML = "<div class='container mt-5'><div class='alert alert-warning text-center shadow'><h5>Carga Indisponível</h5><p>Esta rota pode ter sido removida ou já finalizada.</p><a href='vagas.html' class='btn btn-primary'>Ver Outras Cargas</a></div></div>";
+                return;
+            }
 
-        document.getElementById('opTitle').innerText = doc.nome_rota || "Rota";
-        document.getElementById('opId').innerText = `ID: ${doc.id_operacao}`;
-        document.getElementById('lblVeiculo').innerText = doc.veiculo;
-        document.getElementById('lblPeso').innerText = (detalhes.peso_total || 0).toLocaleString('pt-BR') + " kg";
-        document.getElementById('lblDist').innerText = (doc.total_km || 0).toFixed(1) + " km";
-        document.getElementById('lblValorCarga').innerText = (detalhes.valor_total || 0).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+            const doc = snapshot.docs[0].data();
+            let detalhes = {};
+            try { detalhes = JSON.parse(doc.dados_json); } catch(e){ console.error("Erro ao ler JSON", e); }
+            rotaGlobal = detalhes;
 
-        // Monta Timeline
-        const timeline = document.getElementById('roteiroTimeline');
-        timeline.innerHTML = "";
-        const origemNome = detalhes.origem ? detalhes.origem.nome : "Origem";
-        timeline.innerHTML += `<div class="timeline-item origin"><span class="city-name text-danger">ORIGEM: ${origemNome}</span><span class="city-meta">Coleta</span></div>`;
-        if(detalhes.pedidos) {
-            detalhes.pedidos.forEach((p, idx) => {
-                const meta = p.UF ? `${p.PESO}kg • ${p.UF}` : `${p.PESO}kg`;
-                timeline.innerHTML += `<div class="timeline-item"><span class="city-name">${p.ENDERECO}</span><span class="city-meta">Entrega #${idx+1} (${meta})</span></div>`;
-            });
-        }
-    });
+            // Preenche dados básicos
+            document.getElementById('opTitle').innerText = doc.nome_rota || "Rota";
+            document.getElementById('opId').innerText = `ID: ${doc.id_operacao}`;
+            document.getElementById('lblVeiculo').innerText = doc.veiculo || "N/A";
+            
+            // Formatações numéricas
+            const peso = detalhes.peso_total || 0;
+            const valorCarga = detalhes.valor_total || 0;
+            const km = doc.total_km || 0;
+
+            document.getElementById('lblPeso').innerText = peso.toLocaleString('pt-BR') + " kg";
+            document.getElementById('lblDist').innerText = km.toFixed(1) + " km";
+            document.getElementById('lblValorCarga').innerText = valorCarga.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+
+            // === LÓGICA DO TARGET (META) ===
+            const boxTarget = document.getElementById('boxTarget');
+            const lblTarget = document.getElementById('lblTargetValue');
+            
+            // Verifica se o campo existe no banco e é maior que zero
+            if (doc.target_price && Number(doc.target_price) > 0) {
+                lblTarget.innerText = Number(doc.target_price).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+                boxTarget.style.display = 'block'; // Mostra a caixa
+                console.log("Target encontrado:", doc.target_price);
+            } else {
+                boxTarget.style.display = 'none'; // Esconde
+                console.log("Sem target definido.");
+            }
+            // ================================
+
+            // Monta Timeline (Roteiro)
+            const timeline = document.getElementById('roteiroTimeline');
+            timeline.innerHTML = "";
+            
+            const origemNome = detalhes.origem ? detalhes.origem.nome : "Origem";
+            timeline.innerHTML += `<div class="timeline-item origin"><span class="city-name text-danger">ORIGEM: ${origemNome}</span><span class="city-meta">Coleta</span></div>`;
+            
+            if(detalhes.pedidos && detalhes.pedidos.length > 0) {
+                detalhes.pedidos.forEach((p, idx) => {
+                    const meta = p.UF ? `${p.PESO}kg • ${p.UF}` : `${p.PESO}kg`;
+                    timeline.innerHTML += `<div class="timeline-item"><span class="city-name">${p.ENDERECO}</span><span class="city-meta">Entrega #${idx+1} (${meta})</span></div>`;
+                });
+            }
+        })
+        .catch(err => {
+            console.error("Erro ao buscar rota:", err);
+            alert("Erro ao carregar dados da rota.");
+        });
+    }
 
     function abrirGoogleMapsExterno() {
-        if(!rotaGlobal || !rotaGlobal.origem || !rotaGlobal.pedidos) return alert("Erro nos dados.");
+        if(!rotaGlobal || !rotaGlobal.origem || !rotaGlobal.pedidos) return alert("Erro nos dados de geolocalização.");
         const origin = `${rotaGlobal.origem.coords[1]},${rotaGlobal.origem.coords[0]}`;
         const destinations = rotaGlobal.pedidos.map(p => `${p.lat},${p.lon}`).join('/');
         window.open(`https://www.google.com/maps/dir/${origin}/${destinations}`, '_blank');
     }
 
-    // --- FUNÇÃO PRINCIPAL: SALVA OFERTA E CADASTRO ---
+    // --- ENVIAR COTAÇÃO ---
     function enviarCotação(e) {
         e.preventDefault();
         const btn = document.querySelector('.btn-submit');
@@ -227,15 +283,22 @@
         const empresa = document.getElementById('empresa').value;
         const email = document.getElementById('contatoEmail').value.trim().toLowerCase();
         const telefone = document.getElementById('contatoTel').value;
+        const valorOferta = parseFloat(document.getElementById('valor').value);
 
-        // 1. Dados da Oferta (Cotação Específica)
+        if(!valorOferta || valorOferta <= 0) {
+            alert("Digite um valor válido.");
+            btn.disabled = false; btn.innerHTML = "CONFIRMAR ENVIO";
+            return;
+        }
+
+        // 1. Objeto da Oferta
         const ofertaData = {
             id_operacao: opId,
             motorista: nome,
             empresa: empresa,
-            contato_email: email, // Novo
-            contato_tel: telefone, // Novo
-            valor_oferta: parseFloat(document.getElementById('valor').value),
+            contato_email: email,
+            contato_tel: telefone,
+            valor_oferta: valorOferta,
             prazo: document.getElementById('prazo').value + " dias",
             modalidade: document.getElementById('modalidade').value,
             obs: document.getElementById('obs').value,
@@ -243,8 +306,7 @@
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         };
 
-        // 2. Dados do Cadastro (Banco de Transportadores)
-        // Usamos o E-mail como "Chave" para não duplicar. Se já existe, atualiza.
+        // 2. Objeto do Cadastro
         const cadastroData = {
             nome: nome,
             empresa: empresa,
@@ -255,21 +317,19 @@
             status_ativo: true
         };
 
-        // Usamos Batch para salvar os dois de uma vez
         const batch = db.batch();
 
-        // A) Cria nova oferta na coleção 'cotacoes'
+        // Salva Oferta
         const ofertaRef = db.collection("cotacoes").doc(); 
         batch.set(ofertaRef, ofertaData);
 
-        // B) Atualiza ou Cria cadastro na coleção 'transportadores_cadastrados'
-        // Criamos um ID baseado no email (substituindo caracteres especiais) para evitar duplicidade
+        // Salva/Atualiza Cadastro (ID = email limpo)
         const cadastroId = email.replace(/[^a-zA-Z0-9]/g, "_");
-        const cadastroRef = db.collection("transportadores_cadastrados").doc(cadastroId);
-        // 'merge: true' garante que não apagamos outros dados se o cadastro já existir
-        batch.set(cadastroRef, cadastroData, { merge: true });
+        if(cadastroId) {
+            const cadastroRef = db.collection("transportadores_cadastrados").doc(cadastroId);
+            batch.set(cadastroRef, cadastroData, { merge: true });
+        }
 
-        // Executa
         batch.commit().then(() => {
             document.getElementById('formCard').style.display = 'none';
             document.getElementById('successMsg').style.display = 'block';
