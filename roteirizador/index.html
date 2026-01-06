@@ -61,6 +61,41 @@
         .btn-backup:hover { background: #343a40; }
         .btn-action-icon { border: none; background: transparent; padding: 4px 8px; border-radius: 4px; transition: background 0.2s; }
         .btn-action-icon:hover { background-color: rgba(0,0,0,0.05); }
+        
+        /* Estilo para item arrastável */
+.lista-row.draggable-item {
+    cursor: grab; /* Mãozinha aberta */
+    transition: background-color 0.2s, transform 0.2s;
+}
+
+.lista-row.draggable-item:active {
+    cursor: grabbing; /* Mãozinha fechada ao segurar */
+}
+
+/* Quando o item está sendo arrastado */
+.lista-row.dragging {
+    opacity: 0.5;
+    background-color: #e9ecef !important;
+    border: 2px dashed #0d6efd;
+}
+
+/* Quando passa por cima de outro item (alvo) */
+.lista-row.drag-over {
+    border-top: 2px solid #0d6efd;
+    transform: scale(1.02);
+}
+
+/* EFEITO DE DESTAQUE DO PINO */
+.marker-highlight {
+    background-color: #ffc107 !important; /* Amarelo */
+    color: black !important;
+    transform: scale(1.5) !important; /* Aumenta o tamanho */
+    z-index: 9999 !important; /* Traz para frente */
+    border: 2px solid black !important;
+    box-shadow: 0 0 15px rgba(255, 193, 7, 0.8);
+    transition: all 0.3s ease;
+}
+
     </style>
 </head>
 
@@ -835,19 +870,48 @@
 <div class="modal fade" id="modalPermissoes" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header bg-dark text-white"><h5 class="modal-title fw-bold">Editar Permissões</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold">Gerenciar Acessos</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
             <div class="modal-body">
                 <input type="hidden" id="editUid">
-                <label class="form-label small fw-bold">Email</label>
-                <input type="text" id="editEmail" class="form-control form-control-sm mb-3" readonly>
-                <label class="form-label small fw-bold">Função</label>
-                <select id="editRole" class="form-select mb-3">
-                    <option value="VISITANTE">Visitante (Sem Acesso)</option>
-                    <option value="OPERADOR">Operador (Rotas + Sobras)</option>
-                    <option value="FINANCEIRO">Financeiro (Visualizar)</option>
-                    <option value="MASTER">Master (Total)</option>
-                </select>
-                <button class="btn btn-primary w-100 fw-bold" onclick="salvarPermissoesUsuario()">SALVAR</button>
+                <div class="mb-3">
+                    <label class="small fw-bold text-muted">Usuário</label>
+                    <input type="text" id="editEmail" class="form-control form-control-sm bg-light" readonly>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="small fw-bold text-muted mb-2">Função Principal</label>
+                    <select id="editRole" class="form-select form-select-sm mb-3">
+                        <option value="VISITANTE">Visitante (Bloqueado)</option>
+                        <option value="OPERADOR">Operador</option>
+                        <option value="FINANCEIRO">Financeiro</option>
+                        <option value="MASTER">Master (Acesso Total)</option>
+                    </select>
+                </div>
+
+                <div class="card bg-light border p-2">
+                    <label class="small fw-bold text-primary mb-2">Permissões Específicas</label>
+                    
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="chkExcluir">
+                        <label class="form-check-label small" for="chkExcluir">Permitir <b>Excluir</b> (Rotas, Arquivos, BD)</label>
+                    </div>
+                    
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="chkEditar">
+                        <label class="form-check-label small" for="chkEditar">Permitir <b>Editar</b> (Mover pedidos, Roteirizar)</label>
+                    </div>
+
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="chkFinanceiro">
+                        <label class="form-check-label small" for="chkFinanceiro">Ver <b>Financeiro</b> (KPIs, Valores)</label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary w-100 fw-bold" onclick="salvarPermissoesUsuario()">SALVAR ALTERAÇÕES</button>
             </div>
         </div>
     </div>

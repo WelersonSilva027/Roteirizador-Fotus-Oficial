@@ -74,19 +74,30 @@ map.on('load', () => {
     carregarDashboard();
 });
 
-// NOVA FUNÇÃO DE LOGIN SEGURO
-// ATUALIZAÇÃO: LOGIN COM PERMISSÕES
 function verificarAutenticacao() {
     auth.onAuthStateChanged(async (user) => {
         if (user) {
             const cdSalvo = localStorage.getItem('fotus_user_cd') || "CD Viana - ES";
-            let userRole = "VISITANTE";
+            
+            // Valores Padrão
+            let dadosUser = { 
+                role: "VISITANTE", 
+                perm_excluir: false, 
+                perm_editar: false, 
+                perm_financeiro: false 
+            };
 
-            // Busca perfil no banco
             try {
                 const userDoc = await db.collection("users").doc(user.uid).get();
                 if (userDoc.exists) {
-                    userRole = userDoc.data().role || "VISITANTE";
+                    const d = userDoc.data();
+                    dadosUser.role = d.role || "VISITANTE";
+                    // Se for Master, força tudo true. Se não, lê do banco.
+                    const isMaster = (dadosUser.role === 'MASTER');
+                    dadosUser.perm_excluir = isMaster ? true : (d.perm_excluir || false);
+                    dadosUser.perm_editar = isMaster ? true : (d.perm_editar || false);
+                    dadosUser.perm_financeiro = isMaster ? true : (d.perm_financeiro || false);
+                    
                     db.collection("users").doc(user.uid).update({ last_login: new Date().toISOString(), email: user.email });
                 } else {
                     await db.collection("users").doc(user.uid).set({
@@ -100,34 +111,100 @@ function verificarAutenticacao() {
                 cd: cdSalvo,
                 email: user.email,
                 uid: user.uid,
-                role: "MASTER"  // <--- MUDEI AQUI! (Antes estava userRole)
+                role: dadosUser.role,
+                perm_excluir: dadosUser.perm_excluir,
+                perm_editar: dadosUser.perm_editar,
+                perm_financeiro: dadosUser.perm_financeiro
             };
 
-            // Atualiza UI
             document.getElementById('displayUser').innerText = currentUser.nome;
             document.getElementById('displayFilial').innerText = currentUser.cd;
             
-            // Mostra o cargo
             const badge = document.getElementById('displayRole');
             if(badge) {
                 badge.innerText = currentUser.role;
-                badge.className = `badge ${currentUser.role === 'MASTER' ? 'bg-danger' : 'bg-secondary'}`;
+                badge.className = `badge ${currentUser.role === 'MASTER' ? 'bg-danger' : (currentUser.role === 'OPERADOR' ? 'bg-primary' : 'bg-secondary')}`;
             }
 
-            // Libera aba de Admin
+            // Exibe aba Usuários (Só Master)
             const abaUsers = document.getElementById('navItemUsers');
             if(abaUsers) abaUsers.style.display = (currentUser.role === 'MASTER') ? 'block' : 'none';
 
-            // Bloqueia ações se não tiver permissão
-            aplicarBloqueios(currentUser.role);
+            // Aplica bloqueios visuais
+            aplicarRegrasDeNegocio();
 
             const sel = document.getElementById('selectOrigem');
             if(sel) sel.value = currentUser.cd;
             currentCD = currentUser.cd;
-        } else {
-             // window.location.href = "../"; 
+            
+            if(typeof atualizarContadorPendentes === 'function') atualizarContadorPendentes();
+
         }
     });
+}
+
+
+// --- FUNÇÃO QUE FALTAVA: APLICA AS PERMISSÕES NA TELA ---
+function aplicarRegrasDeNegocio() {
+    // Se não tiver role definida, assume visitante
+    const role = (currentUser && currentUser.role) ? currentUser.role : "VISITANTE";
+    
+    // Mapeamento dos elementos da tela
+    const el = {
+        mainContent: document.getElementById('mainContent'),
+        telaBloqueio: document.getElementById('telaBloqueio'),
+        abas: {
+            operacao: document.getElementById('li-operacao'),
+            cotacoes: document.getElementById('li-cotacoes'),
+            kpi: document.getElementById('li-kpi'),
+            riscos: document.getElementById('li-riscos'),
+            historico: document.getElementById('li-historico'),
+            usuarios: document.getElementById('li-usuarios') // O ID correto do HTML que você mandou é navItemUsers, mas vamos garantir
+        },
+        navItemUsers: document.getElementById('navItemUsers') // O ID real no seu HTML
+    };
+
+    // 1. CENÁRIO VISITANTE: BLOQUEIA TUDO
+    if (role === 'VISITANTE') {
+        if (el.mainContent) el.mainContent.style.display = 'none';
+        if (el.telaBloqueio) {
+            el.telaBloqueio.style.display = 'block';
+            const spanId = document.getElementById('myUid');
+            if (spanId) spanId.innerText = currentUser.uid || '---';
+        }
+        // Esconde todas as abas por segurança
+        if (el.navItemUsers) el.navItemUsers.style.display = 'none';
+        return; 
+    }
+
+    // Se não for visitante, libera a tela
+    if (el.mainContent) el.mainContent.style.display = 'block';
+    if (el.telaBloqueio) el.telaBloqueio.style.display = 'none';
+
+    // 2. REGRAS ESPECÍFICAS POR CARGO
+    
+    // Master: Vê tudo (Aba Usuários aparece)
+    if (role === 'MASTER') {
+        if (el.navItemUsers) el.navItemUsers.style.display = 'block';
+    }
+    
+    // Operador: Vê tudo, MENOS usuários
+    else if (role === 'OPERADOR') {
+        if (el.navItemUsers) el.navItemUsers.style.display = 'none';
+    }
+    
+    // Financeiro: Não vê Roteirização nem Usuários
+    else if (role === 'FINANCEIRO') {
+        if (el.navItemUsers) el.navItemUsers.style.display = 'none';
+        if (el.abas.operacao) el.abas.operacao.style.display = 'none';
+        
+        // Redireciona para a aba de KPIs para não ficar na tela em branco
+        const tabDash = document.querySelector('#dash-tab');
+        if (tabDash) {
+            const tabInstance = new bootstrap.Tab(tabDash);
+            tabInstance.show();
+        }
+    }
 }
 
 function aplicarBloqueios(role) {
@@ -308,10 +385,10 @@ window.salvarOferta = function() {
     });
 };
 
+// Excluir Oferta
 window.excluirOferta = function(docId) {
-    if(confirm("Excluir oferta?")) {
-        db.collection("cotacoes").doc(docId).delete();
-    }
+    if (!currentUser.perm_excluir) return alert("Sem permissão para excluir ofertas.");
+    if(confirm("Excluir oferta?")) db.collection("cotacoes").doc(docId).delete();
 };
 
 // ==============================================================
@@ -350,8 +427,11 @@ function addPedidoManual() {
     atualizarListaPedidos();
 }
 
+// Excluir Item da Lista
 function removerPedido(idx) { 
+    if (!currentUser.perm_excluir) return alert("Sem permissão para excluir.");
     pedidosPorCD[currentCD].splice(idx, 1); 
+    todosPedidosBackup = [...pedidosPorCD[currentCD]];
     atualizarListaPedidos(); 
 }
 
@@ -432,6 +512,11 @@ function addPedidoManual() {
 }
 
 function removerPedido(idx) { 
+    // TRAVA DE SEGURANÇA: SÓ MASTER PODE EXCLUIR
+    if (currentUser.role !== 'MASTER') {
+        return alert("ACESSO NEGADO: Somente usuários MASTER podem remover itens.");
+    }
+
     pedidosPorCD[currentCD].splice(idx, 1); 
     todosPedidosBackup = [...pedidosPorCD[currentCD]];
     atualizarListaPedidos(); 
@@ -766,6 +851,7 @@ function calcularMelhorFracionado(rota) {
 // MÓDULO 5: VISUALIZAÇÃO E UI (CARDS, RESULTADOS, DESENHO ROTA) - COM BOTÃO SOBRAS
 // =============================================================================
 
+// ATUALIZADO: COM CADEADO E BOTÃO MESCLAR
 function mostrarResultados() {
     document.getElementById('inputSection').style.display='none'; 
     document.getElementById('resultSection').style.display='block';
@@ -775,74 +861,72 @@ function mostrarResultados() {
     
     rotasGeradas.forEach((r, idx) => {
         const resFrac = calcularMelhorFracionado(r);
-        r.frete_manual_fra = resFrac.valor; 
-        r.transportadora_sugerida = resFrac.nome;
+        r.frete_manual_fra = resFrac.valor; r.transportadora_sugerida = resFrac.nome;
         
-        let weightPct = (r.peso_total / LIMIT_PESO) * 100; 
-        if(weightPct > 100) weightPct = 100;
+        let weightPct = (r.peso_total / LIMIT_PESO) * 100; if(weightPct > 100) weightPct = 100;
         const barColor = weightPct > 92 ? 'bg-danger' : (weightPct > 70 ? 'bg-warning' : 'bg-success');
         
         const nomeRota = r.rota_nome || `Rota #${idx+1}`;
-        // Verifica se é uma rota de sobras
         const isRestantes = nomeRota.toUpperCase().includes("RESTANTES");
-        const isMacro = nomeRota.includes("MACRO") || isRestantes;
+        const cardStyle = isRestantes ? "border: 2px solid #ffc107; background-color: #fff3cd;" : "border-left: 5px solid #0d6efd;";
+        const badgeColor = isRestantes ? "bg-warning text-dark" : "bg-dark";
         
-        const cardStyle = isRestantes ? "border: 2px solid #ffc107; background-color: #fff3cd;" : (isMacro ? "border: 2px solid #6f42c1; background-color: #f8f9fa;" : "border-left: 5px solid #0d6efd;");
-        const badgeColor = isRestantes ? "bg-warning text-dark" : (isMacro ? "bg-purple text-white" : "bg-dark");
-        
-        const isItiBetter = (r.frete_manual_iti || 0) < resFrac.valor;
-        const checkIti = isItiBetter ? "checked" : "";
-        const checkFra = !isItiBetter ? "checked" : "";
+        const isLocked = r.locked === true; // Verifica se está travada
+        const lockIcon = isLocked ? '<i class="fas fa-lock text-danger"></i>' : '<i class="fas fa-lock-open text-muted"></i>';
+        const lockClass = isLocked ? 'disabled-card' : '';
+        const disabledAttr = isLocked ? 'disabled' : '';
 
-        // --- LÓGICA DO BOTÃO DE SALVAR vs ARQUIVAR SOBRAS ---
+        // Botões de Ação (Salvar, PDF, Maps)
         let btnSaveHtml = "";
         if (isRestantes) {
-            // Se for sobras, mostra botão de Arquivar
-            btnSaveHtml = `
-            <button class="btn btn-sm btn-warning text-dark border fw-bold" onclick="window.arquivarRotaRestante(${idx}); event.stopPropagation()" title="Enviar para Gestão de Sobras">
-                <i class="fas fa-inbox"></i> ARQUIVAR NA GESTÃO DE SOBRAS
-            </button>`;
+            btnSaveHtml = `<button class="btn btn-sm btn-warning text-dark border fw-bold" onclick="window.arquivarRotaRestante(${idx}); event.stopPropagation()"><i class="fas fa-inbox"></i> ARQUIVAR</button>`;
         } else {
-            // Se for rota normal, mostra botões de Maps, PDF e Salvar
+            // Só mostra Mesclar se tiver permissão e não for Restantes
+            const btnMerge = (currentUser.perm_editar || currentUser.role==='MASTER') && !isLocked ? 
+                `<button class="btn btn-sm btn-outline-dark" onclick="window.iniciarMesclagem(${idx}); event.stopPropagation()" title="Juntar com outra rota"><i class="fas fa-object-group"></i></button>` : '';
+            
             btnSaveHtml = `
+            ${btnMerge}
+            <button class="btn btn-sm btn-light text-success border" onclick="window.gerarExcelRota(${idx}); event.stopPropagation()" title="Exportar Excel"><i class="fas fa-file-excel fa-lg"></i></button>
+            
             <button class="btn btn-sm btn-light text-success border" onclick="window.abrirGoogleMaps(${idx}); event.stopPropagation()" title="Maps"><i class="fas fa-map-marked-alt fa-lg"></i></button>
             <button class="btn btn-sm btn-light text-dark border" onclick="window.gerarPDF(${idx}); event.stopPropagation()" title="PDF"><i class="fas fa-file-pdf fa-lg"></i></button>
             <button class="btn btn-sm btn-light text-primary border" onclick="window.salvarRotaFirestore(${idx}); event.stopPropagation()" title="Salvar"><i class="fas fa-save fa-lg"></i></button>
             `;
         }
         
+        // Botão de Travar (Só Master ou Operador)
+        const btnLock = (currentUser.role === 'MASTER' || currentUser.role === 'OPERADOR') ? 
+            `<button class="btn btn-link btn-sm p-0 ms-2" onclick="window.toggleTravaRota(${idx}); event.stopPropagation()" title="${isLocked ? 'Destravar' : 'Travar Edição'}">${lockIcon}</button>` : '';
+
         container.innerHTML += `
-        <div class="route-card" onclick="verRotaNoMapa(${idx})" style="${cardStyle}">
+        <div class="route-card ${lockClass}" onclick="verRotaNoMapa(${idx})" style="${cardStyle}">
             <div class="d-flex justify-content-between align-items-center mb-1">
                 <div class="d-flex align-items-center" style="max-width: 75%; overflow: hidden;">
                     <h6 class="text-primary fw-bold mb-0 text-truncate" title="${nomeRota}">${nomeRota}</h6>
-                    <button class="btn btn-link btn-sm p-0 ms-2 text-secondary" onclick="window.renomearRota(${idx}); event.stopPropagation()" title="Renomear">
-                        <i class="fas fa-pen"></i>
-                    </button>
+                    ${!isLocked ? `<button class="btn btn-link btn-sm p-0 ms-2 text-secondary" onclick="window.renomearRota(${idx}); event.stopPropagation()"><i class="fas fa-pen"></i></button>` : ''}
+                    ${btnLock}
                 </div>
-                <span class="badge ${badgeColor}" style="">${r.veiculo}</span>
+                <span class="badge ${badgeColor}">${r.veiculo}</span>
             </div>
-
             <small class="text-muted d-block mb-2">${r.pedidos.length} peds • ${(r.peso_total/1000).toFixed(1)} ton</small>
-            
-            <div class="weight-progress-container">
-                <div class="progress-track">
-                    <div class="progress-fill ${barColor}" style="width: ${weightPct.toFixed(1)}%;"></div>
-                </div>
-            </div>
+            <div class="weight-progress-container"><div class="progress-track"><div class="progress-fill ${barColor}" style="width: ${weightPct.toFixed(1)}%;"></div></div></div>
             
             <div class="freight-inputs-container mt-2" onclick="event.stopPropagation()">
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <div class="form-check d-flex align-items-center"><input class="form-check-input" type="radio" name="escolha_${idx}" id="radIti_${idx}" value="ITI" ${checkIti}><label class="form-check-label small fw-bold ms-1">Itinerante</label></div>
-                    <input type="number" class="freight-input" id="inIti_${idx}" onchange="recalc(${idx})" placeholder="0.00" style="width: 90px; font-size:0.8rem;">
+                    <div class="form-check d-flex align-items-center">
+                        <input class="form-check-input" type="radio" name="escolha_${idx}" id="radIti_${idx}" value="ITI" ${(r.frete_manual_iti || 0) < r.frete_manual_fra ? "checked" : ""} ${disabledAttr}>
+                        <label class="form-check-label small fw-bold ms-1">Itinerante</label>
+                    </div>
+                    <input type="number" class="freight-input" id="inIti_${idx}" onchange="recalc(${idx})" placeholder="0.00" style="width: 90px; font-size:0.8rem;" ${disabledAttr}>
                 </div>
-                <div class="d-flex justify-content-end mb-2" style="font-size: 0.65rem; color: #6c757d;"><span id="statsIti_${idx}">--</span></div>
-                
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <div class="form-check d-flex align-items-center"><input class="form-check-input" type="radio" name="escolha_${idx}" id="radFra_${idx}" value="FRA" ${checkFra}><label class="form-check-label small fw-bold ms-1 text-truncate" title="${resFrac.nome}">${resFrac.nome}</label></div>
-                    <input type="number" class="freight-input" id="inFra_${idx}" value="${resFrac.valor.toFixed(2)}" onchange="recalc(${idx})" style="width: 90px; font-size:0.8rem;">
+                    <div class="form-check d-flex align-items-center">
+                        <input class="form-check-input" type="radio" name="escolha_${idx}" id="radFra_${idx}" value="FRA" ${(r.frete_manual_iti || 0) >= r.frete_manual_fra ? "checked" : ""} ${disabledAttr}>
+                        <label class="form-check-label small fw-bold ms-1 text-truncate" title="${resFrac.nome}">${resFrac.nome}</label>
+                    </div>
+                    <input type="number" class="freight-input" id="inFra_${idx}" value="${resFrac.valor.toFixed(2)}" onchange="recalc(${idx})" style="width: 90px; font-size:0.8rem;" ${disabledAttr}>
                 </div>
-                <div class="d-flex justify-content-end" style="font-size: 0.65rem; color: #6c757d;"><span id="statsFra_${idx}">--</span></div>
             </div>
             
             <div id="listaPedidos_${idx}" class="lista-pedidos-container" style="display:none;" onclick="event.stopPropagation()"></div>
@@ -851,9 +935,7 @@ function mostrarResultados() {
                 <button class="btn btn-sm btn-outline-secondary fw-bold" onclick="window.toggleListaPedidos(${idx}); event.stopPropagation()">
                     <i class="fas fa-list"></i> EDITAR
                 </button>
-                <div class="d-flex gap-2">
-                    ${btnSaveHtml}
-                </div>
+                <div class="d-flex gap-2">${btnSaveHtml}</div>
             </div>
         </div>`;
     });
@@ -894,32 +976,32 @@ function recalc(idx) {
     r.frete_manual_iti = valIti; r.frete_manual_fra = valFra;
 }
 
-// --- FUNÇÃO CORRIGIDA: DESENHA A ROTA SEM ERROS ---
-// --- FUNÇÃO CORRIGIDA: DESENHA A ROTA SEM ERROS ---
 async function verRotaNoMapa(idx) {
     limparMapa(); 
     currentRouteIndex = idx; 
     const rota = rotasGeradas[idx];
     const allCoords = [rota.origem.coords, ...rota.pedidos.map(p => [p.lon, p.lat])];
     
-    // Atualiza Painel Superior
+    // Atualiza Painel
     document.getElementById('statNome').innerText = rota.id_operacao ? `[${rota.id_operacao}] ${rota.rota_nome}` : rota.rota_nome;
     document.getElementById('statVeiculo').innerText = rota.veiculo; 
     document.getElementById('statValor').innerText = rota.valor_total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
 
-    // Marcador Origem
+    // Marcadores
     new mapboxgl.Marker({color:'red'}).setLngLat(rota.origem.coords).setPopup(new mapboxgl.Popup().setHTML(`<b>ORIGEM: ${rota.origem.nome}</b>`)).addTo(map);
-    
-    // Marcadores Pedidos
     rota.pedidos.forEach((p, i) => {
         const el = document.createElement('div'); 
         if(rota.pedidos.length > 30) { el.style.cssText = "background:#6f42c1; width:10px; height:10px; border-radius:50%; border:1px solid white; cursor:pointer;"; } 
         else { el.style.cssText = "background:#0d6efd; color:white; width:24px; height:24px; border-radius:50%; text-align:center; font-weight:bold; border:2px solid white;"; el.innerText = i+1; }
         
-        let btnMover = ""; let melhorCD = null; let menorDist = Infinity;
-        CDS_FOTUS.forEach(cd => { if(cd.key !== currentCD) { const d = turf.distance([p.lon, p.lat], cd.coords); if(d < menorDist) { menorDist = d; melhorCD = cd; } } });
-        if(melhorCD) btnMover = `<button class="btn btn-sm btn-warning w-100 mt-1" onclick="window.moverParaOutroCD('${melhorCD.key}', ${idx}, ${i})">Mover p/ ${melhorCD.nome}</button>`;
-        
+        let btnMover = ""; 
+        // Apenas Master e Operador movem
+        if (currentUser.role === 'MASTER' || currentUser.role === 'OPERADOR') {
+            let melhorCD = null; let menorDist = Infinity;
+            CDS_FOTUS.forEach(cd => { if(cd.key !== currentCD) { const d = turf.distance([p.lon, p.lat], cd.coords); if(d < menorDist) { menorDist = d; melhorCD = cd; } } });
+            if(melhorCD) btnMover = `<button class="btn btn-sm btn-warning w-100 mt-1" onclick="window.moverParaOutroCD('${melhorCD.key}', ${idx}, ${i})">Mover p/ ${melhorCD.nome}</button>`;
+        }
+
         const popupHTML = `<div class="text-center"><b>${p.ID}</b><br>${p.ENDERECO}<br><div class="my-1 fw-bold text-success">NF: R$ ${p.VALOR.toLocaleString('pt-BR')}</div><span class="badge bg-secondary">${p.PESO}kg</span><hr class="my-1"><button class="btn btn-sm btn-danger w-100" onclick="window.removerPedidoDaRota(${idx}, ${i})">Remover</button>${btnMover}</div>`;
         const m = new mapboxgl.Marker(el).setLngLat([p.lon, p.lat]).setPopup(new mapboxgl.Popup().setHTML(popupHTML)).addTo(map); markers.push(m);
     });
@@ -927,7 +1009,7 @@ async function verRotaNoMapa(idx) {
     document.getElementById('routeStats').style.display='block'; 
     document.getElementById('financePanel').style.display='flex';
     
-    // --- DESENHO DA LINHA AZUL ---
+    // --- AQUI ESTAVA O ERRO: CORRIGIDO ---
     if(allCoords.length > 1) {
         const MAX_WAYPOINTS = 25; const chunks = []; 
         for (let i = 0; i < allCoords.length - 1; i += (MAX_WAYPOINTS - 1)) { 
@@ -937,25 +1019,23 @@ async function verRotaNoMapa(idx) {
         try {
             const promises = chunks.map(chunk => { 
                 const waypoints = chunk.map(c => c.join(',')).join(';'); 
-                // CORREÇÃO: Removemos a verificação do checkbox que não existe mais
-                return fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${waypoints}?geometries=geojson&access_token=${MAPBOX_KEY}`).then(res => res.json()); 
+                
+                const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${waypoints}?geometries=geojson&access_token=${MAPBOX_KEY}`;
+                
+                return fetch(url).then(res => res.json()); 
             });
             
             const results = await Promise.all(promises); 
             let fullGeometry = { type: 'LineString', coordinates: [] }; 
             let totalDist = 0; let totalDur = 0;
-            
             results.forEach(data => { 
                 if (data.routes && data.routes[0]) { 
                     fullGeometry.coordinates.push(...data.routes[0].geometry.coordinates); 
-                    totalDist += data.routes[0].distance; 
-                    totalDur += data.routes[0].duration; 
+                    totalDist += data.routes[0].distance; totalDur += data.routes[0].duration; 
                 } 
             });
-            
             const distKm = totalDist / 1000; rota.distancia_calculada = distKm; 
             document.getElementById('statDist').innerText = distKm.toFixed(1) + " km";
-            
             const hours = Math.floor((totalDur/60)/60); const mins = Math.floor((totalDur/60)%60); 
             document.getElementById('statTempoTotal').innerText = `${hours}h ${mins}m`;
             
@@ -974,24 +1054,8 @@ async function verRotaNoMapa(idx) {
                 map.addLayer({id:'route', type:'line', source:'route', layout: { 'line-join': 'round', 'line-cap': 'round', 'visibility': isVisible }, paint:{'line-color':'#0d6efd', 'line-width':4}}); 
             }
             
+            // Ajusta o zoom
             const b = new mapboxgl.LngLatBounds(); allCoords.forEach(c => b.extend(c)); map.fitBounds(b, {padding: 50});
-
-            // Risco (Protegido contra erros)
-            let custoRisco = 0; let nomesRisco = [];
-            if(typeof risksCache !== 'undefined' && fullGeometry.coordinates.length > 0) {
-                 try {
-                    const line = turf.lineString(fullGeometry.coordinates); 
-                    risksCache.forEach(r => { 
-                        if(r.lat && r.lon) { 
-                            const c = turf.circle([r.lon, r.lat], r.raio/1000); 
-                            if(turf.booleanIntersects(line, c)) { custoRisco += (parseFloat(r.custo_extra)||0); nomesRisco.push(r.descricao); } 
-                        } 
-                    });
-                 } catch(e) {}
-            }
-            const alertBox = document.getElementById('riskAlertBox'); 
-            if(custoRisco > 0) { alertBox.style.display='block'; alertBox.innerHTML = `⚠️ Risco: ${nomesRisco.join(', ')} (+R$ ${custoRisco})`; } else { alertBox.style.display='none'; }
-            rota.custo_calculado = (distKm * rota.custo_km_base) + custoRisco;
 
         } catch(e) { console.error("Erro Mapbox:", e); }
     }
@@ -1000,6 +1064,7 @@ async function verRotaNoMapa(idx) {
     if(inIti && (!inIti.value || inIti.value == 0)) { inIti.value = rota.custo_calculado ? rota.custo_calculado.toFixed(2) : 0; }
     recalc(idx);
 }
+
 window.toggleListaPedidos = function(idx) {
     const divLista = document.getElementById(`listaPedidos_${idx}`);
     if (divLista.style.display === 'none') {
@@ -1010,54 +1075,127 @@ window.toggleListaPedidos = function(idx) {
     }
 };
 
+// VERSÃO FINAL: DRAG AND DROP PURO (SEM SETAS)
+// ATUALIZADO: CLIQUE NA LISTA LEVA AO MAPA
 function renderizarListaPedidos(idx) {
     const rota = rotasGeradas[idx];
-    const divLista = document.getElementById(`listaPedidos_${idx}`);
+    const div = document.getElementById(`listaPedidos_${idx}`);
+    const isLocked = rota.locked === true;
+    
+    if (isLocked) {
+        div.innerHTML = `<div class="p-2 text-center text-muted small"><i class="fas fa-lock"></i> Rota travada.</div>`;
+        return;
+    }
+
     let html = '';
     rota.pedidos.forEach((p, i) => {
-        const iconAuxilio = (p.DESCARGA && p.DESCARGA.toString().toUpperCase().includes("COM")) 
-            ? '<i class="fas fa-people-carry text-warning ms-1" title="Com Auxílio"></i>' : '';
+        // Ícone de Grip (Pegada)
+        const gripIcon = `<i class="fas fa-grip-vertical text-secondary opacity-25 me-2" style="cursor: grab;"></i>`;
+        
+        // Botão de Transferir
+        let optionsRotas = `<option value="" selected disabled>mover...</option>`;
+        rotasGeradas.forEach((r, rIdx) => {
+            if(rIdx !== idx) optionsRotas += `<option value="${rIdx}">➡ ${r.rota_nome}</option>`;
+        });
+        optionsRotas += `<option value="NOVA">+ Nova</option>`;
+
+        const transferSelect = `
+            <select class="form-select form-select-sm border-0 bg-transparent text-primary fw-bold py-0 ps-1" 
+                    style="width: 20px; cursor:pointer;" 
+                    onchange="window.transferirPedidoRota(${idx}, ${i}, this.value)" title="Mover para outra rota" onclick="event.stopPropagation()">
+                <option value="">﹥</option>
+                ${optionsRotas}
+            </select>
+        `;
+
         html += `
-        <div class="lista-row">
-            <div style="flex: 1;">
-                <span class="badge rounded-pill bg-primary me-1" style="font-size: 0.7em;">${i+1}</span>
-                <small class="fw-bold">${p.ID}</small> ${iconAuxilio}
-                <br>
-                <small class="text-muted" style="font-size: 0.75rem;">${p.ENDERECO.substring(0,25)}...</small>
+        <div class="lista-row border-bottom p-2 d-flex align-items-center bg-white draggable-item"
+             draggable="true"
+             data-index="${i}"
+             ondragstart="window.dragStart(event, ${idx}, ${i})"
+             ondragover="window.dragOver(event)"
+             ondrop="window.drop(event, ${idx}, ${i})"
+             ondragenter="this.classList.add('drag-over')"
+             ondragleave="this.classList.remove('drag-over')">
+            
+            <div title="Segure para reordenar">
+                ${gripIcon}
             </div>
-            <div class="text-end" style="flex: 0 0 80px;">
-                <small class="d-block fw-bold text-success">R$${p.VALOR.toLocaleString('pt-BR', {minimumFractionDigits:0})}</small>
-                <small class="d-block text-secondary">${p.PESO}kg</small>
+
+            <div style="flex:1; overflow:hidden; cursor: pointer;" 
+                 onclick="window.destacarPedidoNoMapa(${idx}, ${i})" 
+                 title="Ver no mapa">
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-light text-dark border me-1">${i+1}</span>
+                    <span class="fw-bold text-dark small text-truncate">${p.ID}</span>
+                    ${transferSelect} 
+                </div>
+                <div class="text-muted small text-truncate" style="font-size: 0.75rem;">
+                    ${p.ENDERECO}
+                </div>
             </div>
-            <div class="ms-2">
-                <i class="fas fa-times-circle text-danger" style="cursor:pointer; font-size:1.1rem;" onclick="window.removerPedidoDaRota(${idx}, ${i})" title="Remover"></i>
+
+            <div class="text-end" style="width: 70px;">
+                <div class="fw-bold text-success small">R$${p.VALOR.toLocaleString('pt-BR', {compact:'short'})}</div>
+                <i class="fas fa-trash-alt text-danger cursor-pointer mt-1 opacity-50 hover-opacity-100" 
+                   onclick="window.removerPedidoDaRota(${idx}, ${i})" title="Remover"></i>
             </div>
         </div>`;
     });
-    divLista.innerHTML = html;
+    
+    // CSS Inline para hover
+    const style = `
+    <style>
+        .draggable-item { transition: background 0.1s; }
+        .draggable-item:hover { background-color: #f0f8ff !important; } /* Azulzinho claro ao passar o mouse */
+        .draggable-item.dragging { opacity: 0.5; background: #e9ecef; border: 2px dashed #0d6efd; }
+        .drag-over { border-top: 3px solid #0d6efd !important; }
+        .hover-opacity-100:hover { opacity: 1 !important; }
+    </style>`;
+    
+    div.innerHTML = html + style;
 }
 
+// ATUALIZADO: MANTÉM A LISTA ABERTA APÓS EXCLUIR
 window.removerPedidoDaRota = function(rIdx, pIdx) {
-    const pedido = rotasGeradas[rIdx].pedidos.splice(pIdx, 1)[0];
-    recalcularRotaInfo(rotasGeradas[rIdx]);
-    
-    let idxRestantes = rotasGeradas.findIndex(r => r.rota_nome.includes("ROTA RESTANTES"));
-    if (idxRestantes === -1) {
-        const novaRota = {
-            rota_nome: "ROTA RESTANTES (" + new Date().toLocaleDateString() + ")",
-            pedidos: [pedido], peso_total: 0, valor_total: 0, 
-            veiculo: "Pendente", custo_km_base: CUSTO_TRUCK, origem: rotasGeradas[rIdx].origem,
-            distancia_calculada: 0
-        };
-        rotasGeradas.push(novaRota); 
-    } else { 
-        rotasGeradas[idxRestantes].pedidos.push(pedido); 
-        recalcularRotaInfo(rotasGeradas[idxRestantes]);
+    // 1. Segurança
+    if (currentUser.role !== 'MASTER' && currentUser.role !== 'OPERADOR' && !currentUser.perm_editar) {
+        return alert("Acesso Negado.");
     }
+
+    const rota = rotasGeradas[rIdx];
     
+    // 2. Remove o pedido do array
+    const removido = rota.pedidos.splice(pIdx, 1)[0];
+    recalcularRotaInfo(rota);
+    
+    // 3. Adiciona na Rota de Sobras (Restantes)
+    let idxRest = rotasGeradas.findIndex(r => r.rota_nome && r.rota_nome.includes("RESTANTES"));
+    if (idxRest === -1) {
+        rotasGeradas.push({ 
+            rota_nome: "ROTA RESTANTES (" + new Date().toLocaleDateString() + ")", 
+            pedidos: [removido], peso_total: 0, valor_total: 0, 
+            veiculo: "Pendente", custo_km_base: 6.50, origem: rota.origem, 
+            distancia_calculada: 0, frete_manual_iti: 0, frete_manual_fra: 0 
+        });
+        idxRest = rotasGeradas.length - 1;
+    } else {
+        rotasGeradas[idxRest].pedidos.push(removido);
+    }
+    recalcularRotaInfo(rotasGeradas[idxRest]);
+    
+    // 4. Atualiza a tela (Isso fecharia a lista por padrão)
     mostrarResultados(); 
-    verRotaNoMapa(rIdx);
-    if (rotasGeradas[rIdx] && rotasGeradas[rIdx].pedidos.length > 0) { window.toggleListaPedidos(rIdx); }
+    
+    // 5. O PULO DO GATO: Reabre a lista automaticamente
+    const divLista = document.getElementById(`listaPedidos_${rIdx}`);
+    if(divLista) {
+        divLista.style.display = 'block'; // Força aparecer
+        renderizarListaPedidos(rIdx); // Desenha os itens dentro
+    }
+
+    // 6. Atualiza o mapa se a rota estiver selecionada
+    if(currentRouteIndex === rIdx) verRotaNoMapa(rIdx);
 };
 
 function recalcularRotaInfo(rota) {
@@ -1120,8 +1258,8 @@ async function verRotaNoMapa(idx) {
         try {
             const promises = chunks.map(chunk => {
                 const waypoints = chunk.map(c => c.join(',')).join(';');
-                const exclude = '';
-                return fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${waypoints}?geometries=geojson&access_token=${MAPBOX_KEY}${exclude}`).then(res => res.json());
+                
+                return fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${waypoints}?geometries=geojson&access_token=${MAPBOX_KEY}`).then(res => res.json());
             });
             const results = await Promise.all(promises);
             let fullGeometry = { type: 'LineString', coordinates: [] };
@@ -1132,6 +1270,7 @@ async function verRotaNoMapa(idx) {
                     totalDist += data.routes[0].distance; totalDur += data.routes[0].duration;
                 }
             });
+        
             const distKm = totalDist / 1000; 
             const durMin = totalDur / 60; // Minutos totais
             rota.distancia_calculada = distKm; 
@@ -1417,7 +1556,75 @@ function exportarBackupCompleto() {
         XLSX.utils.book_append_sheet(wb, ws, "Relatorio"); XLSX.writeFile(wb, `TMS_Relatorio_${new Date().toISOString().slice(0,10)}.xlsx`); showLoading(false);
     });
 }
-function delDoc(col, id) { if(confirm("Apagar?")) db.collection(col).doc(id).delete().then(() => { if(col==='historico') carregarHistorico(); if(col==='riscos') carregarRiscos(); if(col==='transportadores') carregarTransportadores(); }); }
+
+// =============================================================================
+// NOVO: EXPORTAR PEDIDOS DA ROTA PARA EXCEL
+// =============================================================================
+window.gerarExcelRota = function(idx) {
+    const rota = rotasGeradas[idx];
+    if (!rota || !rota.pedidos || rota.pedidos.length === 0) {
+        return alert("Rota vazia ou inválida.");
+    }
+
+    // 1. Prepara os dados (Colunas do Excel)
+    const dadosExcel = rota.pedidos.map((p, i) => ({
+        "Sequência": i + 1,
+        "ID Pedido": p.ID,
+        "Endereço / Destino": p.ENDERECO,
+        "UF": p.UF || "-",
+        "Peso (kg)": p.PESO,
+        "Valor Nota (R$)": p.VALOR,
+        "Volume (m³)": p.CUBAGEM || 0,
+        "Descarga": p.DESCARGA || "-"
+    }));
+
+    // 2. Adiciona uma linha final com os totais
+    dadosExcel.push({}); // Linha em branco
+    dadosExcel.push({
+        "Sequência": "TOTAIS",
+        "Peso (kg)": rota.peso_total,
+        "Valor Nota (R$)": rota.valor_total
+    });
+
+    // 3. Cria a planilha
+    const ws = XLSX.utils.json_to_sheet(dadosExcel);
+    const wb = XLSX.utils.book_new();
+    
+    // Ajusta largura das colunas (Opcional, mas fica mais bonito)
+    const wscols = [
+        {wch: 10}, // Seq
+        {wch: 15}, // ID
+        {wch: 50}, // Endereço
+        {wch: 5},  // UF
+        {wch: 12}, // Peso
+        {wch: 15}, // Valor
+        {wch: 10}, // Volume
+        {wch: 15}  // Descarga
+    ];
+    ws['!cols'] = wscols;
+
+    XLSX.utils.book_append_sheet(wb, ws, "Pedidos da Rota");
+
+    // 4. Gera o nome do arquivo limpo
+    let nomeArquivo = rota.rota_nome || `Rota_${idx + 1}`;
+    nomeArquivo = nomeArquivo.replace(/[^a-z0-9]/gi, '_'); // Remove caracteres especiais do nome
+
+    // 5. Baixa o arquivo
+    XLSX.writeFile(wb, `Manifesto_${nomeArquivo}.xlsx`);
+};
+
+
+// Excluir do Banco (Histórico/Risco)
+function delDoc(col, id) { 
+    if (!currentUser.perm_excluir) return alert("Sem permissão para excluir registros.");
+    if(confirm("Apagar permanentemente?")) {
+        db.collection(col).doc(id).delete().then(() => { 
+            if(col==='historico') carregarHistorico(); 
+            if(col==='areas_risco') carregarRiscos(); 
+        }); 
+    }
+}
+
 async function salvarRisco() {
     const addr = document.getElementById('riskAddr').value; if(!addr) return;
     try { const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(addr)}.json?access_token=${MAPBOX_KEY}&limit=1`); const d = await res.json();
@@ -1546,9 +1753,6 @@ window.renomearRota = function(idx) {
 };
 
 // =============================================================================
-// MÓDULO 8: GESTÃO DE BACKLOG (SOBRAS E PENDÊNCIAS)
-// =============================================================================
-// =============================================================================
 // MÓDULO 8: BACKLOG E SOBRAS (VISUALIZAR E RESGATAR)
 // =============================================================================
 
@@ -1610,10 +1814,14 @@ window.verPendentes = function() {
 
 // 2. EXCLUIR UM PEDIDO DO BACKLOG (NOVO)
 window.excluirPendenteIndividual = function(docId) {
+    // TRAVA DE SEGURANÇA
+    if (currentUser.role !== 'MASTER') {
+        return alert("ACESSO NEGADO: Somente usuários MASTER podem limpar o backlog.");
+    }
+
     if(!confirm("Excluir este pedido permanentemente do Backlog?")) return;
     
     db.collection("pedidos_pendentes").doc(docId).delete().then(() => {
-        // Recarrega a lista sem fechar o modal (UX melhor)
         window.verPendentes();
         atualizarContadorPendentes();
     });
@@ -1668,7 +1876,20 @@ setTimeout(atualizarContadorPendentes, 2000);
 function showLoading(s, t) { const el = document.getElementById('loading'); if(el) el.style.display = s ? 'block' : 'none'; if(t) document.getElementById('loading-text').innerText = t; }
 function voltarInput() { document.getElementById('resultSection').style.display='none'; document.getElementById('inputSection').style.display='block'; limparMapa(); }
 function limparMapa() { if(markers) { markers.forEach(m => m.remove()); markers = []; } if(map.getLayer('route')) { map.removeLayer('route'); map.removeSource('route'); } document.getElementById('financePanel').style.display='none'; document.getElementById('routeStats').style.display='none'; }
-function delDoc(c, i) { if(confirm("Apagar?")) db.collection(c).doc(i).delete().then(() => { if(c==='historico') carregarHistorico(); if(c==='areas_risco') carregarRiscos(); if(c==='transportadores') carregarTransportadores(); }); }
+function delDoc(col, id) { 
+    // TRAVA DE SEGURANÇA GERAL
+    if (currentUser.role !== 'MASTER') {
+        return alert("ACESSO NEGADO: Somente usuários MASTER podem apagar registros do sistema.");
+    }
+
+    if(confirm("ATENÇÃO: Isso apagará o registro permanentemente. Continuar?")) {
+        db.collection(col).doc(id).delete().then(() => { 
+            if(col==='historico') carregarHistorico(); 
+            if(col==='areas_risco') carregarRiscos(); 
+            if(col==='transportadores') carregarTransportadores(); 
+        }); 
+    }
+}
 async function salvarRisco() { const a = document.getElementById('riskAddr').value; if(!a) return; try { const r = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(a)}.json?access_token=${MAPBOX_KEY}&limit=1`); const d = await r.json(); if(d.features?.length) db.collection("areas_risco").add({ descricao: document.getElementById('riskDesc').value, custo_extra: parseFloat(document.getElementById('riskCost').value), raio: parseInt(document.getElementById('riskRadius').value), lat: d.features[0].center[1], lon: d.features[0].center[0] }).then(()=>{ alert("Salvo"); carregarRiscos(); }); } catch(e){} }
 function carregarRiscos() { db.collection("areas_risco").get().then(q => { risksCache=[]; const d=document.getElementById('listaRiscos'); if(d) d.innerHTML=""; q.forEach(doc=>{ const da=doc.data(); risksCache.push(da); if(d) d.innerHTML+=`<div>${da.descricao} <i class="fas fa-trash" onclick="delDoc('areas_risco','${doc.id}')"></i></div>`; }); desenharRiscosNoMapa(); }); }
 function desenharRiscosNoMapa() { if(map.getLayer('rl')) map.removeLayer('rl'); if(map.getSource('rs')) map.removeSource('rs'); const f = risksCache.map(r => r.lat?turf.circle([r.lon, r.lat], r.raio/1000):null).filter(x=>x); if(f.length) { map.addSource('rs',{type:'geojson',data:{type:'FeatureCollection',features:f}}); map.addLayer({id:'rl',type:'fill',source:'rs',paint:{'fill-color':'#f00','fill-opacity':0.3}}); } }
@@ -1684,46 +1905,130 @@ window.toggleListaPedidos = function(idx) {
     if (d.style.display === 'none') { renderizarListaPedidos(idx); d.style.display = 'block'; } else d.style.display = 'none';
 };
 
-// LISTA DETALHADA COM VALORES RESTAURADA
+// ATUALIZADO: LISTA CLICÁVEL PARA DESTAQUE
 function renderizarListaPedidos(idx) {
-    const rota = rotasGeradas[idx]; const div = document.getElementById(`listaPedidos_${idx}`);
-    let h = '';
+    const rota = rotasGeradas[idx];
+    const div = document.getElementById(`listaPedidos_${idx}`);
+    const isLocked = rota.locked === true;
+    
+    if (isLocked) {
+        div.innerHTML = `<div class="p-2 text-center text-muted small"><i class="fas fa-lock"></i> Rota travada. Destrave para editar.</div>`;
+        return;
+    }
+
+    let html = '';
     rota.pedidos.forEach((p, i) => {
-        h += `
-        <div class="lista-row border-bottom p-1 d-flex align-items-center bg-white">
-            <div style="flex:1">
-                <span class="badge bg-primary me-1">${i+1}</span>
-                <small class="fw-bold">${p.ID}</small><br>
-                <small class="text-muted">${p.ENDERECO.substring(0,25)}...</small>
+        // Ícone de Grip (Pegada)
+        const gripIcon = `<i class="fas fa-grip-vertical text-secondary opacity-50 me-2" style="cursor: grab; font-size: 1.2rem;"></i>`;
+        
+        // Menu de transferência
+        let optionsRotas = `<option value="" selected disabled>mover...</option>`;
+        rotasGeradas.forEach((r, rIdx) => {
+            if(rIdx !== idx) optionsRotas += `<option value="${rIdx}">➡ ${r.rota_nome}</option>`;
+        });
+        optionsRotas += `<option value="NOVA">+ Nova</option>`;
+
+        const transferSelect = `
+            <select class="form-select form-select-sm border-0 bg-transparent text-primary fw-bold py-0 ps-1" 
+                    style="width: 20px; cursor:pointer;" 
+                    onchange="window.transferirPedidoRota(${idx}, ${i}, this.value)" 
+                    onclick="event.stopPropagation()" 
+                    title="Mover para outra rota">
+                <option value="">﹥</option>
+                ${optionsRotas}
+            </select>
+        `;
+
+        html += `
+        <div class="lista-row border-bottom p-2 d-flex align-items-center bg-white draggable-item"
+             draggable="true"
+             data-index="${i}"
+             ondragstart="window.dragStart(event, ${idx}, ${i})"
+             ondragover="window.dragOver(event)"
+             ondrop="window.drop(event, ${idx}, ${i})"
+             ondragenter="this.classList.add('drag-over')"
+             ondragleave="this.classList.remove('drag-over')">
+            
+            <div title="Segure e arraste para reordenar">${gripIcon}</div>
+
+            <div style="flex:1; overflow:hidden; cursor: pointer;" 
+                 onclick="window.destacarPedidoNoMapa(${idx}, ${i})"
+                 title="Clique para destacar no mapa">
+                 
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-light text-dark border me-1">${i+1}</span>
+                    <span class="fw-bold text-dark small text-truncate">${p.ID}</span>
+                    ${transferSelect} 
+                </div>
+                <div class="text-muted small text-truncate" style="font-size: 0.75rem;">
+                    ${p.ENDERECO}
+                </div>
             </div>
-            <div class="text-end me-2" style="width:80px">
-                <small class="d-block fw-bold text-success">R$${p.VALOR.toLocaleString('pt-BR')}</small>
-                <small class="d-block text-secondary">${p.PESO}kg</small>
-            </div>
-            <div class="ms-1">
-                <i class="fas fa-times-circle text-danger cursor-pointer" style="font-size:1.2rem;" onclick="window.removerPedidoDaRota(${idx}, ${i})"></i>
+
+            <div class="text-end" style="width: 70px;">
+                <div class="fw-bold text-success small">R$${p.VALOR.toLocaleString('pt-BR', {compact:'short'})}</div>
+                <i class="fas fa-trash-alt text-danger cursor-pointer mt-1 opacity-50 hover-opacity-100" 
+                   onclick="event.stopPropagation(); window.removerPedidoDaRota(${idx}, ${i})" 
+                   title="Remover"></i>
             </div>
         </div>`;
     });
-    div.innerHTML = h;
+    
+    // CSS Inline para o Drag & Drop e Hover
+    const style = `
+    <style>
+        .draggable-item { cursor: grab; transition: background 0.1s; }
+        .draggable-item:hover { background-color: #f8f9fa !important; }
+        .draggable-item:active { cursor: grabbing; }
+        .draggable-item.dragging { opacity: 0.5; background: #e9ecef; border: 2px dashed #0d6efd; }
+        .drag-over { border-top: 3px solid #0d6efd !important; transform: translateY(2px); }
+        .hover-opacity-100:hover { opacity: 1 !important; }
+    </style>`;
+    
+    div.innerHTML = html + style;
 }
 
 window.removerPedidoDaRota = function(rIdx, pIdx) {
+    // 1. Verifica Permissão
+    if (currentUser.role !== 'MASTER' && currentUser.role !== 'OPERADOR' && !currentUser.perm_editar) {
+        return alert("Acesso Negado.");
+    }
+
     const rota = rotasGeradas[rIdx];
-    const removido = rota.pedidos.splice(pIdx, 1)[0];
-    recalcularRotaInfo(rota);
     
-    // Adiciona aos RESTANTES
+    // 2. Remove o pedido e guarda ele
+    const removido = rota.pedidos.splice(pIdx, 1)[0];
+    
+    // 3. Joga para a rota de Sobras (Restantes)
     let idxRest = rotasGeradas.findIndex(r => r.rota_nome && r.rota_nome.includes("RESTANTES"));
     if (idxRest === -1) {
-        rotasGeradas.push({ rota_nome: "ROTA RESTANTES (" + new Date().toLocaleDateString() + ")", pedidos: [removido], peso_total: 0, valor_total: 0, veiculo: "Pendente", custo_km_base: CUSTO_TRUCK, origem: rota.origem, distancia_calculada: 0, frete_manual_iti: 0, frete_manual_fra: 0 });
+        // Se não existe rota de sobras, cria uma
+        rotasGeradas.push({ 
+            rota_nome: "ROTA RESTANTES (" + new Date().toLocaleDateString() + ")", 
+            pedidos: [removido], peso_total: 0, valor_total: 0, 
+            veiculo: "Pendente", custo_km_base: 6.50, origem: rota.origem, 
+            distancia_calculada: 0, frete_manual_iti: 0, frete_manual_fra: 0 
+        });
         idxRest = rotasGeradas.length - 1;
     } else {
         rotasGeradas[idxRest].pedidos.push(removido);
     }
+    
+    // 4. Recalcula os totais (Peso/Valor)
+    recalcularRotaInfo(rota);
     recalcularRotaInfo(rotasGeradas[idxRest]);
     
-    mostrarResultados();
+    // 5. Atualiza a Tela Geral (Isso fecharia a lista por padrão)
+    mostrarResultados(); 
+    
+    // 6. O FIX: Reabre a lista e desenha os itens
+    const divLista = document.getElementById(`listaPedidos_${rIdx}`);
+    if(divLista) {
+        divLista.style.display = 'block'; // Força ficar visível
+        renderizarListaPedidos(rIdx);     // Desenha os pedidos dentro
+    }
+
+    // 7. Atualiza o Mapa (para remover o pino excluído)
     if(currentRouteIndex === rIdx) verRotaNoMapa(rIdx);
 };
 
@@ -1752,90 +2057,315 @@ function recalcularRotaInfo(rota) {
 }
 
 // =============================================================================
-// MÓDULO 11: GESTÃO DE USUÁRIOS E PERMISSÕES (NOVO)
+// MÓDULO 11: GESTÃO DE USUÁRIOS E PERMISSÕES (ATUALIZADO)
 // =============================================================================
 
-// 1. CARREGAR LISTA
 window.carregarListaUsuarios = function() {
     if (currentUser.role !== 'MASTER') return;
     
     const container = document.getElementById('listaUsuariosContainer');
     if(!container) return;
-    
     container.innerHTML = '<div class="text-center p-3 text-muted"><i class="fas fa-spinner fa-spin"></i> Buscando usuários...</div>';
 
     db.collection("users").orderBy("last_login", "desc").get().then(snap => {
         container.innerHTML = "";
-        if(snap.empty) {
-            container.innerHTML = '<div class="alert alert-warning m-2">Nenhum usuário encontrado.</div>';
-            return;
-        }
-
         snap.forEach(doc => {
             const u = doc.data();
-            const uid = doc.id;
+            const cor = u.role === "MASTER" ? "danger" : (u.role === "OPERADOR" ? "primary" : "secondary");
             
-            // Define cor do badge
-            let cor = "secondary";
-            if (u.role === "MASTER") cor = "danger";
-            else if (u.role === "OPERADOR") cor = "primary";
-            else if (u.role === "FINANCEIRO") cor = "success";
-
-            const lastLogin = u.last_login ? new Date(u.last_login).toLocaleDateString() : "Nunca";
+            // Ícones de permissão
+            const icoExcluir = u.perm_excluir ? '<i class="fas fa-trash text-danger" title="Pode Excluir"></i>' : '<i class="fas fa-trash text-muted opacity-25"></i>';
+            const icoEditar = u.perm_editar ? '<i class="fas fa-edit text-primary" title="Pode Editar"></i>' : '<i class="fas fa-edit text-muted opacity-25"></i>';
+            const icoFin = u.perm_financeiro ? '<i class="fas fa-dollar-sign text-success" title="Ver Financeiro"></i>' : '<i class="fas fa-dollar-sign text-muted opacity-25"></i>';
 
             container.innerHTML += `
             <div class="user-item">
                 <div>
-                    <div class="fw-bold small text-dark"><i class="fas fa-user-circle text-muted"></i> ${u.email}</div>
-                    <div class="mt-1">
+                    <div class="fw-bold small text-dark">${u.email}</div>
+                    <div class="mt-1 d-flex align-items-center gap-2">
                         <span class="badge bg-${cor} badge-role">${u.role}</span>
-                        <span class="text-muted ms-2" style="font-size:0.65rem">Acesso: ${lastLogin}</span>
+                        <div class="border-start ps-2 d-flex gap-1">${icoExcluir} ${icoEditar} ${icoFin}</div>
                     </div>
                 </div>
-                <button class="btn btn-sm btn-outline-dark" onclick="abrirEditorUsuario('${uid}', '${u.email}', '${u.role}')" title="Editar Permissões">
-                    <i class="fas fa-edit"></i>
+                <button class="btn btn-sm btn-outline-dark" onclick="abrirEditorUsuario('${doc.id}', '${u.email}', '${u.role}', ${u.perm_excluir}, ${u.perm_editar}, ${u.perm_financeiro})">
+                    <i class="fas fa-cog"></i>
                 </button>
             </div>`;
         });
-    }).catch(err => {
-        console.error(err);
-        container.innerHTML = `<div class="alert alert-danger m-2">Erro: ${err.message}</div>`;
     });
 };
 
-// 2. ABRIR EDITOR
-window.abrirEditorUsuario = function(uid, email, role) {
+window.abrirEditorUsuario = function(uid, email, role, pExcluir, pEditar, pFin) {
     document.getElementById('editUid').value = uid;
     document.getElementById('editEmail').value = email;
     document.getElementById('editRole').value = role;
     
-    const modal = new bootstrap.Modal(document.getElementById('modalPermissoes'));
-    modal.show();
+    // Marca as caixinhas
+    document.getElementById('chkExcluir').checked = pExcluir || false;
+    document.getElementById('chkEditar').checked = pEditar || false;
+    document.getElementById('chkFinanceiro').checked = pFin || false;
+    
+    new bootstrap.Modal(document.getElementById('modalPermissoes')).show();
 };
 
-// 3. SALVAR PERMISSÃO
 window.salvarPermissoesUsuario = function() {
     const uid = document.getElementById('editUid').value;
     const role = document.getElementById('editRole').value;
     
-    // Segurança básica para não se auto-remover de Master
-    if (uid === currentUser.uid && role !== 'MASTER') {
-        if(!confirm("Cuidado! Você está removendo seu próprio acesso de MASTER. Tem certeza?")) return;
+    const permData = {
+        role: role,
+        perm_excluir: document.getElementById('chkExcluir').checked,
+        perm_editar: document.getElementById('chkEditar').checked,
+        perm_financeiro: document.getElementById('chkFinanceiro').checked
+    };
+    
+    // Se virou Master, força tudo True
+    if (role === 'MASTER') {
+        permData.perm_excluir = true;
+        permData.perm_editar = true;
+        permData.perm_financeiro = true;
     }
 
-    db.collection("users").doc(uid).update({ role: role }).then(() => {
-        alert("Permissões atualizadas com sucesso!");
-        const modalEl = document.getElementById('modalPermissoes');
-        const modal = bootstrap.Modal.getInstance(modalEl);
-        modal.hide();
-        carregarListaUsuarios(); // Recarrega a lista
-    }).catch(err => alert("Erro ao salvar: " + err.message));
+    if (uid === currentUser.uid && role !== 'MASTER') {
+        if(!confirm("Cuidado! Você está removendo seu próprio acesso de MASTER.")) return;
+    }
+
+    db.collection("users").doc(uid).update(permData).then(() => {
+        alert("Permissões salvas!");
+        bootstrap.Modal.getInstance(document.getElementById('modalPermissoes')).hide();
+        carregarListaUsuarios();
+    }).catch(err => alert("Erro: " + err.message));
 };
 
-// 4. FUNÇÃO DE EMERGÊNCIA (CONSOLE)
-window.tornarMeMaster = function() {
-    if(!auth.currentUser) return console.error("Você precisa estar logado!");
-    db.collection('users').doc(auth.currentUser.uid).update({role:'MASTER'}).then(() => {
-        alert("SUCESSO: Agora você é MASTER. Recarregue a página (F5).");
-    });
+// =============================================================================
+// MÓDULO 12: EDIÇÃO AVANÇADA DE ROTAS (NOVO)
+// =============================================================================
+
+// 1. TRAVAR/DESTRAVAR ROTA
+window.toggleTravaRota = function(idx) {
+    if (currentUser.role !== 'MASTER' && currentUser.role !== 'OPERADOR') return alert("Permissão negada.");
+    rotasGeradas[idx].locked = !rotasGeradas[idx].locked;
+    mostrarResultados();
 };
+
+// 2. REORDENAR (Subir/Descer)
+window.moverOrdemPedido = function(rIdx, pIdx, direction) {
+    // Segurança
+    if (!currentUser.perm_editar && currentUser.role !== 'MASTER' && currentUser.role !== 'OPERADOR') return;
+    
+    const rota = rotasGeradas[rIdx];
+    if (rota.locked) return alert("Rota travada.");
+
+    const targetIdx = pIdx + direction;
+    // Evita erro de índice
+    if (targetIdx < 0 || targetIdx >= rota.pedidos.length) return;
+    
+    // Troca de posição
+    const temp = rota.pedidos[pIdx];
+    rota.pedidos[pIdx] = rota.pedidos[targetIdx];
+    rota.pedidos[targetIdx] = temp;
+    
+    // Atualiza visual
+    renderizarListaPedidos(rIdx);
+    
+    // Redesenha o mapa (Importante para o traçado mudar se a ordem mudou)
+    verRotaNoMapa(rIdx);
+};
+// 3. TRANSFERIR PARA OUTRA ROTA
+// ATUALIZADO: RECALCULA E ATUALIZA O MAPA AUTOMATICAMENTE
+window.transferirPedidoRota = function(origemIdx, pIdx, destinoVal) {
+    if (!destinoVal) return;
+    
+    // Verifica permissão
+    if (!currentUser.perm_editar && currentUser.role !== 'MASTER' && currentUser.role !== 'OPERADOR') {
+        alert("Sem permissão para editar.");
+        return renderizarListaPedidos(origemIdx); // Reseta o select
+    }
+
+    // 1. Pega o pedido
+    const pedido = rotasGeradas[origemIdx].pedidos[pIdx];
+
+    // 2. Remove da Origem
+    rotasGeradas[origemIdx].pedidos.splice(pIdx, 1);
+
+    // 3. Adiciona no Destino
+    let destinoIdx;
+    if (destinoVal === 'NOVA') {
+        // Cria uma nova rota vazia
+        rotasGeradas.push({
+            rota_nome: `NOVA ROTA ${rotasGeradas.length + 1}`,
+            pedidos: [], peso_total: 0, valor_total: 0, veiculo: "Truck", custo_km_base: 6.50, origem: rotasGeradas[origemIdx].origem
+        });
+        destinoIdx = rotasGeradas.length - 1;
+    } else {
+        destinoIdx = parseInt(destinoVal);
+    }
+
+    // Adiciona o pedido na rota de destino
+    rotasGeradas[destinoIdx].pedidos.push(pedido);
+
+    // 4. Recalcula as informações (Peso, Valor) das duas rotas
+    recalcularRotaInfo(rotasGeradas[origemIdx]);
+    recalcularRotaInfo(rotasGeradas[destinoIdx]);
+
+    // 5. ATUALIZA A TELA E O MAPA
+    mostrarResultados(); // Atualiza os Cards
+    
+    // Mantém a lista da rota de origem aberta para você continuar movendo
+    window.toggleListaPedidos(origemIdx);
+    
+    // Desenha a rota de DESTINO no mapa para você ver onde o pedido foi parar
+    // (Ou desenha a de origem se preferir ver o buraco que ficou)
+    verRotaNoMapa(destinoIdx); 
+    
+    // Feedback visual rápido
+    // alert(`Pedido movido para ${rotasGeradas[destinoIdx].rota_nome}`);
+};
+
+// 4. MESCLAR DUAS ROTAS
+window.iniciarMesclagem = function(idxAlvo) {
+    if (!verificarPermissaoEdicao(idxAlvo)) return;
+    
+    const input = prompt("Digite o NÚMERO da rota que você quer JUNTAR a esta (ex: 2 para Rota #2):");
+    if (!input) return;
+    
+    // Tenta achar a rota pelo número visual (índice + 1)
+    const idxOrigem = parseInt(input) - 1;
+    
+    if (isNaN(idxOrigem) || idxOrigem < 0 || idxOrigem >= rotasGeradas.length || idxOrigem === idxAlvo) {
+        return alert("Número de rota inválido.");
+    }
+    
+    if (rotasGeradas[idxOrigem].locked) return alert("A rota de origem está travada.");
+
+    if(confirm(`Tem certeza que deseja mover todos os pedidos da "${rotasGeradas[idxOrigem].rota_nome}" para dentro da "${rotasGeradas[idxAlvo].rota_nome}"?`)) {
+        // Move pedidos
+        rotasGeradas[idxAlvo].pedidos.push(...rotasGeradas[idxOrigem].pedidos);
+        
+        // Remove a rota antiga
+        rotasGeradas.splice(idxOrigem, 1);
+        
+        // Ajusta índice se necessário (se removeu uma rota anterior, o índice atual muda)
+        const novoIdxAlvo = (idxOrigem < idxAlvo) ? idxAlvo - 1 : idxAlvo;
+        
+        recalcularRotaInfo(rotasGeradas[novoIdxAlvo]);
+        mostrarResultados();
+        verRotaNoMapa(novoIdxAlvo);
+    }
+};
+
+// Helper de Segurança
+function verificarPermissaoEdicao(rIdx) {
+    if (rotasGeradas[rIdx].locked) {
+        alert("Esta rota está travada para edições.");
+        return false;
+    }
+    if (!currentUser.perm_editar && currentUser.role !== 'MASTER' && currentUser.role !== 'OPERADOR') {
+        alert("Sem permissão para editar.");
+        return false;
+    }
+    return true;
+}
+
+// =============================================================================
+// LÓGICA DE DRAG & DROP (ARRASTAR E SOLTAR)
+// =============================================================================
+
+let draggedItemContext = null; 
+
+// Inicia o arrasto
+window.dragStart = function(e, rotaIdx, pedidoIdx) {
+    draggedItemContext = { rotaIdx: rotaIdx, pedidoIdx: pedidoIdx };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify(draggedItemContext));
+    setTimeout(() => e.target.classList.add('dragging'), 0);
+};
+
+// Permite soltar
+window.dragOver = function(e) {
+    e.preventDefault(); 
+    e.dataTransfer.dropEffect = 'move';
+};
+
+// Solta o item e reordena
+window.drop = function(e, targetRotaIdx, targetPedidoIdx) {
+    e.preventDefault();
+    
+    // Limpa estilos
+    document.querySelectorAll('.draggable-item').forEach(i => {
+        i.classList.remove('dragging');
+        i.classList.remove('drag-over');
+    });
+
+    if (!draggedItemContext || draggedItemContext.rotaIdx !== targetRotaIdx) return;
+
+    const oldIndex = draggedItemContext.pedidoIdx;
+    const newIndex = targetPedidoIdx;
+
+    if (oldIndex === newIndex) return;
+
+    // Troca no array
+    const rota = rotasGeradas[targetRotaIdx];
+    const itemMovido = rota.pedidos.splice(oldIndex, 1)[0];
+    rota.pedidos.splice(newIndex, 0, itemMovido);
+
+    draggedItemContext = null;
+
+    // Atualiza Lista e Mapa
+    renderizarListaPedidos(targetRotaIdx); 
+    verRotaNoMapa(targetRotaIdx); 
+};
+
+// =============================================================================
+// FUNÇÃO: DAR ZOOM E DESTAQUE NO PINO (CLIQUE NA LISTA)
+// =============================================================================
+window.destacarPedidoNoMapa = function(rotaIdx, pedidoIdx) {
+    
+    // 1. Se a rota clicada não é a que está no mapa agora, desenha ela primeiro
+    if (currentRouteIndex !== rotaIdx) {
+        verRotaNoMapa(rotaIdx);
+        // Pequeno delay para garantir que os marcadores foram criados antes de destacar
+        setTimeout(() => aplicarDestaque(pedidoIdx), 300);
+    } else {
+        // Se já está na rota, destaca direto
+        aplicarDestaque(pedidoIdx);
+    }
+};
+
+function aplicarDestaque(index) {
+    // Verifica se existem marcadores
+    if (!markers || markers.length === 0) return;
+
+    // 1. Limpa destaques anteriores (volta todos ao normal)
+    markers.forEach(m => {
+        const el = m.getElement();
+        el.classList.remove('marker-highlight');
+        el.style.zIndex = "1"; // Joga para trás
+    });
+
+    // 2. Pega o marcador alvo
+    const alvo = markers[index];
+    
+    if (alvo) {
+        const el = alvo.getElement();
+        
+        // Adiciona a classe CSS que deixa amarelo e grande
+        el.classList.add('marker-highlight');
+        el.style.zIndex = "9999"; // Joga para frente de tudo
+        
+        // Abre o balãozinho de informações se estiver fechado
+        if (!alvo.getPopup().isOpen()) {
+            alvo.togglePopup();
+        }
+
+        // Faz o mapa voar suavemente até lá
+        map.flyTo({
+            center: alvo.getLngLat(),
+            zoom: 15, // Zoom bem próximo
+            speed: 1.8, // Velocidade do voo
+            curve: 1,
+            essential: true
+        });
+    }
+}
+
