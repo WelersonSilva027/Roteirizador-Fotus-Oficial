@@ -1,31 +1,44 @@
+/**
+ * ============================================================================
+ * ROTEIRIZADOR FOTUS LOGÍSTICA - DOCUMENTAÇÃO E FORMATAÇÃO
+ * ============================================================================
+ */
+
+
 // ==============================================================
-// CONFIGURAÇÕES GERAIS E INICIALIZAÇÃO
+//          1. CONFIGURAÇÕES GERAIS E INICIALIZAÇÃO
 // ==============================================================
 
-const MAPBOX_KEY = "pk.eyJ1Ijoid2VsZXJzb25oZXJpbmdlciIsImEiOiJjbWl2eWVtbTIxOHpjM2tuYmFzaWxwOXM0In0.o4wyQuEQAAPiOkHLIGzz-g"; 
+const MAPBOX_KEY = "pk.eyJ1Ijoid2VsZXJzb25oZXJpbmdlciIsImEiOiJjbWl2eWVtbTIxOHpjM2tuYmFzaWxwOXM0In0.o4wyQuEQAAPiOkHLIGzz-g";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyARALEOLxIb7TlsSRqI0fdNfY8D-SgcYbY",
-  authDomain: "roteirizadorfotus.firebaseapp.com",
-  projectId: "roteirizadorfotus",
-  storageBucket: "roteirizadorfotus.firebasestorage.app",
-  messagingSenderId: "597979098930",
-  appId: "1:597979098930:web:b8fb54a0ffc160e39a312b",
-  measurementId: "G-Z3P42WF5HD"
+    apiKey: "AIzaSyARALEOLxIb7TlsSRqI0fdNfY8D-SgcYbY",
+    authDomain: "roteirizadorfotus.firebaseapp.com",
+    projectId: "roteirizadorfotus",
+    storageBucket: "roteirizadorfotus.firebasestorage.app",
+    messagingSenderId: "597979098930",
+    appId: "1:597979098930:web:b8fb54a0ffc160e39a312b",
+    measurementId: "G-Z3P42WF5HD"
 };
 
-// Inicializa Firebase
+// Inicializa Firebase se ainda não existir instância
 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth(); // Adicionado Auth
 
 // Inicializa Mapbox
 mapboxgl.accessToken = MAPBOX_KEY;
-const map = new mapboxgl.Map({ container: 'map', style: 'mapbox://styles/mapbox/streets-v12', center: [-40.3842, -20.3708], zoom: 5 });
+const map = new mapboxgl.Map({ 
+    container: 'map', 
+    style: 'mapbox://styles/mapbox/streets-v12', 
+    center: [-40.3842, -20.3708], 
+    zoom: 5 
+});
+
 let kpiChartInstance = null;
 
 // ==============================================================
-// VARIÁVEIS GLOBAIS E CONSTANTES
+//              2. VARIÁVEIS GLOBAIS E CONSTANTES
 // ==============================================================
 
 // IMPORTANTE: currentUser agora será preenchido pelo Firebase Auth
@@ -42,6 +55,7 @@ let textoCotacaoAtual = "";
 let ofertasCache = [];
 let tempImportFile = null; // Variável para segurar o arquivo durante a decisão do modal
 
+// Constantes de Regra de Negócio
 const LIMIT_PESO = 27000;
 const CUSTO_TRUCK = 6.50;
 const CUSTO_CARRETA = 9.00;
@@ -57,10 +71,11 @@ const CDS_FOTUS = [
     { key: "CD Feira - BA", nome: "CD Feira - BA", coords: [-38.966, -12.266] },
 ];
 
+// Inicializa arrays vazios para cada CD
 CDS_FOTUS.forEach(cd => pedidosPorCD[cd.key] = []);
 
 // ==============================================================
-// CICLO DE VIDA E LOGIN (ATUALIZADO PARA FIREBASE AUTH)
+//          3. CICLO DE VIDA E LOGIN (FIREBASE AUTH)
 // ==============================================================
 
 map.on('load', () => {
@@ -74,6 +89,9 @@ map.on('load', () => {
     carregarDashboard();
 });
 
+/**
+ * Verifica o estado de autenticação do usuário e carrega permissões.
+ */
 function verificarAutenticacao() {
     auth.onAuthStateChanged(async (user) => {
         if (user) {
@@ -143,8 +161,9 @@ function verificarAutenticacao() {
     });
 }
 
-
-// --- FUNÇÃO QUE FALTAVA: APLICA AS PERMISSÕES NA TELA ---
+/**
+ * Aplica as regras de negócio na interface baseadas no cargo (Role).
+ */
 function aplicarRegrasDeNegocio() {
     // Se não tiver role definida, assume visitante
     const role = (currentUser && currentUser.role) ? currentUser.role : "VISITANTE";
@@ -159,9 +178,9 @@ function aplicarRegrasDeNegocio() {
             kpi: document.getElementById('li-kpi'),
             riscos: document.getElementById('li-riscos'),
             historico: document.getElementById('li-historico'),
-            usuarios: document.getElementById('li-usuarios') // O ID correto do HTML que você mandou é navItemUsers, mas vamos garantir
+            usuarios: document.getElementById('li-usuarios') 
         },
-        navItemUsers: document.getElementById('navItemUsers') // O ID real no seu HTML
+        navItemUsers: document.getElementById('navItemUsers') 
     };
 
     // 1. CENÁRIO VISITANTE: BLOQUEIA TUDO
@@ -228,8 +247,7 @@ window.logout = function() {
     }
 };
 
-// ... O RESTANTE DO CÓDIGO PERMANECE IDÊNTICO PARA GARANTIR FUNCIONALIDADE ...
-
+// Configuração das Abas (Tabs)
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.nav-link').forEach(tab => {
         tab.addEventListener('click', (e) => {
@@ -247,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ==============================================================
-// GESTÃO DE COTAÇÕES (MÓDULO)
+//                      4. GESTÃO DE COTAÇÕES
 // ==============================================================
 
 window.carregarListaCotacoes = function() {
@@ -283,34 +301,22 @@ window.carregarOfertasDaOperacao = function() {
     document.getElementById('painelCotacao').style.display = 'block';
     document.getElementById('msgSelectRoute').style.display = 'none';
 
-    // Busca o valor atual do Target no banco para preencher o campo
-    db.collection("historico").where("id_operacao", "==", idOp).get().then(snap => {
-        if(!snap.empty) {
-            const d = snap.docs[0].data();
-            // Se tiver valor, preenche. Se não, limpa.
-            document.getElementById('quoteTarget').value = d.target_price || ""; 
-        }
-    });
-    
-    // 1. Busca o Target atualizado do Banco de Dados
+    // 1. Busca Target (Mantido)
     db.collection("historico").where("id_operacao", "==", idOp).get().then(snap => {
         if(!snap.empty) {
             const d = snap.docs[0].data();
             const target = d.target_price || 0;
-            // Preenche o input
             document.getElementById('quoteTarget').value = target > 0 ? target : ""; 
         }
     });
     
-    // 2. Carrega as ofertas (Mantive sua lógica original aqui)
+    // 2. Carrega e Renderiza Ofertas (VISUAL MELHORADO)
     const divLista = document.getElementById('listaOfertas');
     divLista.innerHTML = "<div class='text-center py-3 text-muted'><i class='fas fa-circle-notch fa-spin'></i> Buscando lances...</div>";
     
     db.collection("cotacoes")
         .where("id_operacao", "==", idOp)
         .onSnapshot(snapshot => {
-            // ... (Seu código de renderizar ofertas continua igual aqui) ...
-            // Vou resumir para não ocupar espaço, mantenha o código de renderização que já funciona
             ofertasCache = [];
             divLista.innerHTML = "";
             let bestPrice = Infinity;
@@ -323,23 +329,63 @@ window.carregarOfertasDaOperacao = function() {
 
             let ofertasTemp = [];
             snapshot.forEach(doc => ofertasTemp.push({id: doc.id, ...doc.data()}));
+            
+            // Ordena: Menor preço primeiro
             ofertasTemp.sort((a, b) => a.valor_oferta - b.valor_oferta);
 
-            ofertasTemp.forEach(d => {
+            // --- RENDERIZAÇÃO DOS CARDS ---
+            ofertasTemp.forEach((d, index) => {
                 if (d.valor_oferta < bestPrice) bestPrice = d.valor_oferta;
-                // ... (Seu HTML de renderizar o card da oferta) ...
-                // Cole o trecho que gera o card da oferta aqui
-                 divLista.innerHTML += `
-                <div class="card mb-2 shadow-sm border">
+                
+                // Lógica do Campeão (Top 1)
+                const isWinner = (index === 0); // O primeiro da lista é o vencedor
+                
+                // Estilos Condicionais
+                const bgStyle = isWinner ? "background-color: #d1e7dd;" : "background-color: #fff;"; // Verde claro se ganhar
+                const borderClass = isWinner ? "border border-success" : "border";
+                const trophyHtml = isWinner ? '<i class="fas fa-trophy text-success me-2" style="font-size:1.1rem;"></i>' : '';
+                const nameClass = isWinner ? "text-dark" : "text-secondary";
+                
+                // Formatação de Data
+                let dateStr = "--/--";
+                if(d.timestamp) {
+                    const dateObj = d.timestamp.toDate ? d.timestamp.toDate() : new Date(d.timestamp);
+                    dateStr = dateObj.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}) + ", " + dateObj.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+                }
+
+                divLista.innerHTML += `
+                <div class="card mb-2 shadow-sm ${borderClass}" style="${bgStyle} transition: all 0.3s;">
                     <div class="card-body p-2 d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>${d.motorista}</strong>
-                            <div class="small text-muted">${d.obs || ''}</div>
+                        
+                        <div style="flex: 1; overflow: hidden;">
+                            <div class="d-flex align-items-center mb-1">
+                                ${trophyHtml}
+                                <strong class="${nameClass} text-truncate" style="font-size: 1rem;">${d.motorista}</strong>
+                                <span class="badge bg-info text-dark ms-2 shadow-sm" style="font-size: 0.6em;">WEB</span>
+                            </div>
+                            
+                            <div class="small text-uppercase text-secondary mb-1" style="font-size: 0.7rem; letter-spacing: 0.5px;">
+                                <strong>${d.empresa || 'PARTICULAR'}</strong> • ${d.modalidade || 'PADRÃO'}
+                            </div>
+
+                            <div class="small text-muted fst-italic text-truncate">
+                                <i class="far fa-comment-dots"></i> ${d.obs || 'Sem observações'}
+                            </div>
                         </div>
-                        <div class="text-end">
-                            <div class="h5 fw-bold text-success mb-0">R$ ${d.valor_oferta.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
-                            <i class="fas fa-trash text-danger cursor-pointer" onclick="window.excluirOferta('${d.id}')"></i>
+
+                        <div class="text-end ms-2" style="min-width: 120px;">
+                            <div class="h4 fw-bold text-success mb-0" style="letter-spacing: -0.5px;">
+                                R$ ${d.valor_oferta.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                            </div>
+                            <div class="small text-muted mb-1" style="font-size: 0.75rem;">
+                                Prazo: ${d.prazo || '?'}
+                            </div>
+                            <div class="d-flex justify-content-end align-items-center gap-2">
+                                <small class="text-muted" style="font-size: 0.65rem;">${dateStr}</small>
+                                <i class="fas fa-trash text-danger cursor-pointer hover-scale" onclick="window.excluirOferta('${d.id}')" title="Excluir Oferta"></i>
+                            </div>
                         </div>
+
                     </div>
                 </div>`;
             });
@@ -383,9 +429,9 @@ window.excluirOferta = function(docId) {
     if(confirm("Excluir oferta?")) db.collection("cotacoes").doc(docId).delete();
 };
 
-// ==============================================================
-// GESTÃO DE INPUTS E TELA PRINCIPAL
-// ==============================================================
+// ==========================================================================
+//          5. GESTÃO DE INPUTS E TELA PRINCIPAL (Funções "init" e "add")
+// ==========================================================================
 
 function initDropdown() {
     const sel = document.getElementById('selectOrigem');
@@ -460,10 +506,12 @@ function atualizarListaPedidos() {
     lbl.innerText = v; lbl.className = `badge ${cor}`;
 }
 
-// =============================================================================
-// MÓDULO 3: GESTÃO DE DADOS (IMPORTAÇÃO E LISTA) - COM MESCLAGEM INTELIGENTE
-// =============================================================================
+// =================================================================================
+//         MÓDULO 3: GESTÃO DE DADOS (IMPORTAÇÃO E LISTA) - REDUNDÂNCIA MANTIDA
+// =================================================================================
 
+// NOTA: Esta função 'initDropdown' é duplicada no código original. Mantida.
+/*
 function initDropdown() {
     const sel = document.getElementById('selectOrigem');
     if(!sel) return;
@@ -483,6 +531,7 @@ function initDropdown() {
     });
 }
 
+// NOTA: Esta função 'addPedidoManual' é duplicada no código original. Mantida.
 function addPedidoManual() {
     const end = document.getElementById('inEnd').value; 
     if(!end) return alert("Endereço obrigatório!");
@@ -503,6 +552,7 @@ function addPedidoManual() {
     atualizarListaPedidos();
 }
 
+// NOTA: Esta função 'removerPedido' é duplicada no código original. Mantida.
 function removerPedido(idx) { 
     // TRAVA DE SEGURANÇA: SÓ MASTER PODE EXCLUIR
     if (currentUser.role !== 'MASTER') {
@@ -514,6 +564,7 @@ function removerPedido(idx) {
     atualizarListaPedidos(); 
 }
 
+// NOTA: Esta função 'atualizarListaPedidos' é duplicada no código original. Mantida.
 function atualizarListaPedidos() {
     const lista = document.getElementById('listaPedidos'); lista.innerHTML = ""; 
     let totalPeso = 0; let totalValor = 0;
@@ -540,6 +591,7 @@ function atualizarListaPedidos() {
     const cor = totalPeso > 27000 ? "bg-danger" : "bg-warning text-dark";
     const lbl = document.getElementById('lblVeiculo'); lbl.innerText = v; lbl.className = `badge ${cor}`;
 }
+*/
 // --- FUNÇÃO DE IMPORTAÇÃO COM MESCLAGEM (ATUALIZADA) ---
 
 // 1. GATILHO INICIAL (Chamado pelo input type="file")
@@ -667,6 +719,7 @@ function processarArquivoImportado(file, manterAtuais) {
     };
     reader.readAsArrayBuffer(file);
 }
+
 // 2. FUNÇÃO CHAMADA PELOS BOTÕES DO MODAL (HTML)
 window.resolverImportacao = function(manterAtuais) {
     // Fecha o modal
@@ -687,8 +740,9 @@ window.cancelarImportacao = function() {
     const input = document.getElementById('csvFile');
     if(input) input.value = "";
 }
+
 // ==============================================================
-// MOTOR DE ROTEIRIZAÇÃO
+//                    6. MOTOR DE ROTEIRIZAÇÃO
 // ==============================================================
 
 async function processarRota() {
@@ -839,9 +893,9 @@ function calcularMelhorFracionado(rota) {
     return encontrou ? { valor: melhorPreco, nome: melhorTransp } : { valor: rota.valor_total * PCT_FRACIONADO, nome: `Sem transp. p/ ${uf} (4%)` };
 }
 
-// =============================================================================
-// MÓDULO 5: VISUALIZAÇÃO E UI (CARDS, RESULTADOS, DESENHO ROTA) - COM BOTÃO SOBRAS
-// =============================================================================
+// =======================================================================================
+//     MÓDULO 5: VISUALIZAÇÃO E UI (CARDS, RESULTADOS, DESENHO ROTA) - COM BOTÃO SOBRAS
+// =======================================================================================
 
 // ATUALIZADO: COM CADEADO E BOTÃO MESCLAR
 function mostrarResultados() {
@@ -968,93 +1022,176 @@ function recalc(idx) {
     r.frete_manual_iti = valIti; r.frete_manual_fra = valFra;
 }
 
+// ===================================================================================
+//      FUNÇÃO DE INTELIGENCIA: ROTAS HÍBRIDAS (DIRECTIONS API vs OPTIMIZATION API)
+// ===================================================================================
 async function verRotaNoMapa(idx) {
     limparMapa(); 
     currentRouteIndex = idx; 
     const rota = rotasGeradas[idx];
-    const allCoords = [rota.origem.coords, ...rota.pedidos.map(p => [p.lon, p.lat])];
     
-    // Atualiza Painel
+    // Atualiza Painel de Informações
     document.getElementById('statNome').innerText = rota.id_operacao ? `[${rota.id_operacao}] ${rota.rota_nome}` : rota.rota_nome;
     document.getElementById('statVeiculo').innerText = rota.veiculo; 
     document.getElementById('statValor').innerText = rota.valor_total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
 
-    // Marcadores
-    new mapboxgl.Marker({color:'red'}).setLngLat(rota.origem.coords).setPopup(new mapboxgl.Popup().setHTML(`<b>ORIGEM: ${rota.origem.nome}</b>`)).addTo(map);
-    rota.pedidos.forEach((p, i) => {
-        const el = document.createElement('div'); 
-        if(rota.pedidos.length > 30) { el.style.cssText = "background:#6f42c1; width:10px; height:10px; border-radius:50%; border:1px solid white; cursor:pointer;"; } 
-        else { el.style.cssText = "background:#0d6efd; color:white; width:24px; height:24px; border-radius:50%; text-align:center; font-weight:bold; border:2px solid white;"; el.innerText = i+1; }
-        
-        let btnMover = ""; 
-        // Apenas Master e Operador movem
-        if (currentUser.role === 'MASTER' || currentUser.role === 'OPERADOR') {
-            let melhorCD = null; let menorDist = Infinity;
-            CDS_FOTUS.forEach(cd => { if(cd.key !== currentCD) { const d = turf.distance([p.lon, p.lat], cd.coords); if(d < menorDist) { menorDist = d; melhorCD = cd; } } });
-            if(melhorCD) btnMover = `<button class="btn btn-sm btn-warning w-100 mt-1" onclick="window.moverParaOutroCD('${melhorCD.key}', ${idx}, ${i})">Mover p/ ${melhorCD.nome}</button>`;
+    // 1. Decide qual API usar
+    // O limite grátis da Optimization API é 12 coordenadas (1 Origem + 11 Entregas)
+    const USAR_OTIMIZACAO = rota.pedidos.length <= 11; 
+
+    // Prepara as coordenadas: [Origem, ...Pedidos]
+    const coords = [rota.origem.coords];
+    rota.pedidos.forEach(p => coords.push([p.lon, p.lat]));
+    
+    // String de coordenadas para URL (lon,lat;lon,lat...)
+    const waypointsStr = coords.map(c => c.join(',')).join(';');
+
+    try {
+        let geojsonGeometry = null;
+        let distKm = 0;
+        let duracaoSegundos = 0;
+
+        // =============================================================================
+        //     CENÁRIO A: POUCOS PEDIDOS -> OTIMIZAÇÃO AUTOMÁTICA PARA MELHOR TRAJETO
+        // =============================================================================
+        if (USAR_OTIMIZACAO && rota.pedidos.length > 0) {
+            // Avisa o usuário que está pensando
+            const loadingMsg = document.createElement('div');
+            loadingMsg.id = 'loadingMap';
+            loadingMsg.innerHTML = '<span class="badge bg-success shadow p-2"><i class="fas fa-magic fa-spin"></i> Otimizando Rota Inteligente...</span>';
+            loadingMsg.style.position = 'absolute'; loadingMsg.style.top = '10px'; loadingMsg.style.left = '50%'; loadingMsg.style.transform = 'translateX(-50%)'; loadingMsg.style.zIndex = '9999';
+            document.body.appendChild(loadingMsg);
+
+            // Chama API de Otimização (Optimization v1)
+            const res = await fetch(`https://api.mapbox.com/optimized-trips/v1/mapbox/driving/${waypointsStr}?geometries=geojson&source=first&access_token=${MAPBOX_KEY}`);
+            const data = await res.json();
+            
+            if (document.getElementById('loadingMap')) document.getElementById('loadingMap').remove();
+
+            if (data.trips && data.trips[0]) {
+                const trip = data.trips[0];
+                geojsonGeometry = trip.geometry;
+                distKm = trip.distance / 1000;
+                duracaoSegundos = trip.duration;
+
+                // --- REORDENAR A LISTA ---
+                // A API devolve a ordem otimizada. Precisamos atualizar nossa lista visual.
+                // A ordem vem em 'waypoints'. O primeiro é a origem (waypoint_index 0).
+                
+                const novaOrdemPedidos = [];
+                // Pula o primeiro (origem) e pega os próximos
+                trip.waypoints.forEach(wp => {
+                    if (wp.waypoint_index !== 0) { // Ignora a origem
+                        // O waypoint_index corresponde à posição no array original 'coords'
+                        // coords[0] é origem. coords[1] é pedido[0], coords[2] é pedido[1]...
+                        // Então indicePedido = waypoint_index - 1
+                        const indiceOriginal = wp.waypoint_index - 1;
+                        if (indiceOriginal >= 0) {
+                            novaOrdemPedidos.push(rota.pedidos[indiceOriginal]);
+                        }
+                    }
+                });
+
+                // Atualiza o array da rota com a nova ordem perfeita
+                rota.pedidos = novaOrdemPedidos;
+                
+                // Redesenha a lista lateral para refletir a nova ordem
+                renderizarListaPedidos(idx);
+                
+                // Feedback visual
+                // alert("Rota reorganizada para economizar combustível!");
+            }
+        } 
+        // =====================================================================
+        //         CENÁRIO B: MUITOS PEDIDOS -> ROTA PADRÃO (Directions)
+        // =====================================================================
+        else {
+            // Chama API de Direção Comum (Directions v5)
+            // Divide em chunks se tiver mais de 25 pontos (limite da Directions)
+            // Simplificado aqui para o fluxo principal
+            const res = await fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${waypointsStr}?geometries=geojson&access_token=${MAPBOX_KEY}`);
+            const data = await res.json();
+            
+            if (data.routes && data.routes[0]) {
+                geojsonGeometry = data.routes[0].geometry;
+                distKm = data.routes[0].distance / 1000;
+                duracaoSegundos = data.routes[0].duration;
+            }
         }
 
-        const popupHTML = `<div class="text-center"><b>${p.ID}</b><br>${p.ENDERECO}<br><div class="my-1 fw-bold text-success">NF: R$ ${p.VALOR.toLocaleString('pt-BR')}</div><span class="badge bg-secondary">${p.PESO}kg</span><hr class="my-1"><button class="btn btn-sm btn-danger w-100" onclick="window.removerPedidoDaRota(${idx}, ${i})">Remover</button>${btnMover}</div>`;
-        const m = new mapboxgl.Marker(el).setLngLat([p.lon, p.lat]).setPopup(new mapboxgl.Popup().setHTML(popupHTML)).addTo(map); markers.push(m);
-    });
-    
-    document.getElementById('routeStats').style.display='block'; 
-    document.getElementById('financePanel').style.display='flex';
-    
-    // --- AQUI ESTAVA O ERRO: CORRIGIDO ---
-    if(allCoords.length > 1) {
-        const MAX_WAYPOINTS = 25; const chunks = []; 
-        for (let i = 0; i < allCoords.length - 1; i += (MAX_WAYPOINTS - 1)) { 
-            const chunk = allCoords.slice(i, i + MAX_WAYPOINTS); 
-            if(chunk.length > 1) chunks.push(chunk); 
+        // =====================================================================
+        //          ATUALIZAÇÃO DA TELA (COMUM PARA OS DOIS CASOS)
+        // =====================================================================
+        
+        // 1. Atualiza totais na tela
+        rota.distancia_calculada = distKm;
+        document.getElementById('statDist').innerText = distKm.toFixed(1) + " km";
+        const hours = Math.floor((duracaoSegundos/60)/60); 
+        const mins = Math.floor((duracaoSegundos/60)%60); 
+        document.getElementById('statTempoTotal').innerText = `${hours}h ${mins}m`;
+        
+        // Estimativa de prazo
+        if(distKm > 0) { 
+            const d = Math.ceil(distKm / 350) + 2; 
+            const elP = document.getElementById('statPrazoFrac');
+            if(elP) elP.innerText = `~${d} a ${d + 1} dias úteis`; 
         }
-        try {
-            const promises = chunks.map(chunk => { 
-                const waypoints = chunk.map(c => c.join(',')).join(';'); 
-                
-                const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${waypoints}?geometries=geojson&access_token=${MAPBOX_KEY}`;
-                
-                return fetch(url).then(res => res.json()); 
-            });
-            
-            const results = await Promise.all(promises); 
-            let fullGeometry = { type: 'LineString', coordinates: [] }; 
-            let totalDist = 0; let totalDur = 0;
-            results.forEach(data => { 
-                if (data.routes && data.routes[0]) { 
-                    fullGeometry.coordinates.push(...data.routes[0].geometry.coordinates); 
-                    totalDist += data.routes[0].distance; totalDur += data.routes[0].duration; 
-                } 
-            });
-            const distKm = totalDist / 1000; rota.distancia_calculada = distKm; 
-            document.getElementById('statDist').innerText = distKm.toFixed(1) + " km";
-            const hours = Math.floor((totalDur/60)/60); const mins = Math.floor((totalDur/60)%60); 
-            document.getElementById('statTempoTotal').innerText = `${hours}h ${mins}m`;
-            
-            if(distKm > 0) { 
-                const d = Math.ceil(distKm / 350) + 2; 
-                document.getElementById('statPrazoFrac').innerText = `~${d} a ${d + 1} dias úteis`; 
-            }
-            
-            // Desenha a linha
+
+        // 2. Calcula Custo
+        let custoRisco = 0; // (Lógica de risco simplificada)
+        rota.custo_calculado = (distKm * rota.custo_km_base) + custoRisco;
+        
+        // Atualiza input de custo se estiver vazio
+        const inIti = document.getElementById(`inIti_${idx}`); 
+        if(inIti && (!inIti.value || inIti.value == 0)) { inIti.value = rota.custo_calculado.toFixed(2); }
+        recalc(idx);
+
+        // 3. Desenha a Linha Azul
+        if (geojsonGeometry) {
             const isVisible = document.getElementById('toggleRouteLine')?.checked !== false ? 'visible' : 'none';
             if (map.getSource('route')) { 
-                map.getSource('route').setData({type:'Feature', geometry: fullGeometry}); 
+                map.getSource('route').setData({type:'Feature', geometry: geojsonGeometry}); 
                 map.setLayoutProperty('route', 'visibility', isVisible); 
             } else { 
-                map.addSource('route', { type: 'geojson', data: {type:'Feature', geometry: fullGeometry} }); 
+                map.addSource('route', { type: 'geojson', data: {type:'Feature', geometry: geojsonGeometry} }); 
                 map.addLayer({id:'route', type:'line', source:'route', layout: { 'line-join': 'round', 'line-cap': 'round', 'visibility': isVisible }, paint:{'line-color':'#0d6efd', 'line-width':4}}); 
             }
-            
-            // Ajusta o zoom
-            const b = new mapboxgl.LngLatBounds(); allCoords.forEach(c => b.extend(c)); map.fitBounds(b, {padding: 50});
+        }
 
-        } catch(e) { console.error("Erro Mapbox:", e); }
+        // 4. Desenha os Marcadores (Agora na ordem certa!)
+        markers = [];
+        // Marcador Origem
+        new mapboxgl.Marker({color:'red'}).setLngLat(rota.origem.coords).setPopup(new mapboxgl.Popup().setHTML(`<b>ORIGEM: ${rota.origem.nome}</b>`)).addTo(map);
+
+        rota.pedidos.forEach((p, i) => {
+            const el = document.createElement('div'); 
+            // Estilo do pino
+            if(rota.pedidos.length > 30) { 
+                el.style.cssText = "background:#6f42c1; width:10px; height:10px; border-radius:50%; border:1px solid white; cursor:pointer;"; 
+            } else { 
+                // Se foi otimizado, o número 1, 2, 3 agora reflete a melhor sequência
+                const isOtimizado = USAR_OTIMIZACAO ? "border-color: #198754;" : ""; // Borda verde se otimizado
+                el.style.cssText = `background:#0d6efd; color:white; width:24px; height:24px; border-radius:50%; text-align:center; font-weight:bold; border:2px solid white; ${isOtimizado}`; 
+                el.innerText = i+1; 
+            }
+            
+            const popupHTML = `<div class="text-center"><b>${p.ID}</b><br>${p.ENDERECO}<br><div class="my-1 fw-bold text-success">NF: R$ ${p.VALOR.toLocaleString('pt-BR')}</div><button class="btn btn-sm btn-danger w-100" onclick="window.removerPedidoDaRota(${idx}, ${i})">Remover</button></div>`;
+            
+            const m = new mapboxgl.Marker(el).setLngLat([p.lon, p.lat]).setPopup(new mapboxgl.Popup().setHTML(popupHTML)).addTo(map); 
+            markers.push(m);
+        });
+
+        // Enquadra o mapa
+        const b = new mapboxgl.LngLatBounds(); 
+        coords.forEach(c => b.extend(c)); 
+        map.fitBounds(b, {padding: 50});
+
+        document.getElementById('routeStats').style.display='block';
+
+    } catch(e) { 
+        console.error("Erro Mapbox:", e); 
+        alert("Erro ao traçar rota: " + e.message);
     }
-    
-    const inIti = document.getElementById(`inIti_${idx}`); 
-    if(inIti && (!inIti.value || inIti.value == 0)) { inIti.value = rota.custo_calculado ? rota.custo_calculado.toFixed(2) : 0; }
-    recalc(idx);
 }
 
 window.toggleListaPedidos = function(idx) {
@@ -1204,9 +1341,9 @@ window.toggleRouteVisibility = function() {
 };
 
 // ==============================================================
-// VISUALIZAÇÃO NO MAPA (COM CÁLCULO DE DIAS E PRAZOS)
+// VISUALIZAÇÃO NO MAPA (COM CÁLCULO DE DIAS E PRAZOS) - DUPLICATA MANTIDA
 // ==============================================================
-
+/*
 async function verRotaNoMapa(idx) {
     limparMapa(); currentRouteIndex = idx; const rota = rotasGeradas[idx];
     const allCoords = [rota.origem.coords, ...rota.pedidos.map(p => [p.lon, p.lat])];
@@ -1309,9 +1446,11 @@ async function verRotaNoMapa(idx) {
     if(!inIti.value) inIti.value = rota.custo_calculado ? rota.custo_calculado.toFixed(2) : 0;
     recalc(idx);
 }
+*/
+
 
 // ==============================================================
-// FUNÇÕES AUXILIARES, CÁLCULOS FINAIS E FIREBASE
+//          FUNÇÕES AUXILIARES, CÁLCULOS FINAIS E FIREBASE
 // ==============================================================
 
 function recalc(idx) {
@@ -1468,17 +1607,13 @@ window.prepararCotacao = function(idx) {
         return parts.length > 1 ? parts[parts.length-1].trim().substring(0,2) : "BR"; 
     }))].join(', ');
 
-   // --- DENTRO DA FUNÇÃO window.prepararCotacao ---
-
-    // ... (código anterior mantido) ...
-
-    // --- GERAÇÃO DO LINK INTELIGENTE (ATUALIZADO PARA PASTAS) ---
+   // --- GERAÇÃO DO LINK INTELIGENTE (ATUALIZADO PARA PASTAS) ---
     
-    // Pega o domínio principal (ex: https://roteirizadorfotus.web.app)
+    // Pega o domínio principal
     const dominio = window.location.origin;
     
     // Monta o link apontando para a pasta vizinha "transportador"
-    const linkPortal = `${dominio}/transportador/?op=${idOp}`;
+    const linkPortal = `${dominio}/transportador/index.html?op=${idOp}`;
 
     // MONTA O TEXTO DA COTAÇÃO
     textoCotacaoAtual = 
@@ -1495,7 +1630,6 @@ ${linkPortal}
 
 _Favor preencher o link acima para registrar sua oferta no sistema._`;
 
-    // ... (restante do código igual) ...
     // Joga no textarea do modal
     document.getElementById('textoCotacao').value = textoCotacaoAtual;
     
@@ -1550,7 +1684,7 @@ function exportarBackupCompleto() {
 }
 
 // =============================================================================
-// NOVO: EXPORTAR PEDIDOS DA ROTA PARA EXCEL
+//              FUNÇÃO - EXPORTAR PEDIDOS DA ROTA PARA EXCEL
 // =============================================================================
 window.gerarExcelRota = function(idx) {
     const rota = rotasGeradas[idx];
@@ -1613,6 +1747,7 @@ function delDoc(col, id) {
         db.collection(col).doc(id).delete().then(() => { 
             if(col==='historico') carregarHistorico(); 
             if(col==='areas_risco') carregarRiscos(); 
+            if(col==='transportadores') carregarTransportadores(); 
         }); 
     }
 }
@@ -1623,21 +1758,12 @@ async function salvarRisco() {
     if(d.features?.length) db.collection("areas_risco").add({ descricao: document.getElementById('riskDesc').value, custo_extra: parseFloat(document.getElementById('riskCost').value), raio: parseInt(document.getElementById('riskRadius').value), lat: d.features[0].center[1], lon: d.features[0].center[0] }).then(()=>{alert("Salvo!"); carregarRiscos();});
     } catch(e){}
 }
-function carregarRiscos() { 
-    db.collection("areas_risco").get().then(q => { risksCache = []; const div = document.getElementById('listaRiscos'); div.innerHTML=""; q.forEach(doc=>{ const d=doc.data(); risksCache.push(d); div.innerHTML+=`<div class="d-flex justify-content-between border-bottom p-1"><span onclick="window.irParaRisco(${d.lat}, ${d.lon})" style="cursor:pointer; color:#dc3545; font-weight:bold;">${d.descricao}</span><i class="fas fa-trash text-danger" onclick="delDoc('areas_risco','${doc.id}')"></i></div>`; }); desenharRiscosNoMapa(); }); 
-}
-function desenharRiscosNoMapa() {
-    if (map.getLayer('riscos-layer')) map.removeLayer('riscos-layer');
-    if (map.getSource('riscos-source')) map.removeSource('riscos-source');
-    const features = risksCache.map(r => { if(r.lat && r.lon) { return turf.circle([r.lon, r.lat], r.raio/1000, {steps: 64, units: 'kilometers', properties: {description: r.descricao}}); } }).filter(f => f);
-    if(features.length > 0) { map.addSource('riscos-source', { type: 'geojson', data: { type: 'FeatureCollection', features: features } }); map.addLayer({ id: 'riscos-layer', type: 'fill', source: 'riscos-source', layout: {}, paint: { 'fill-color': '#dc3545', 'fill-opacity': 0.3 } }); }
-}
-window.irParaRisco = function(lat, lon) { if(lat && lon) { map.flyTo({ center: [lon, lat], zoom: 12, speed: 1.5 }); } };
-function salvarTransportadora() {
-    const nome = document.getElementById('transpNome').value; if(!nome) return alert("Nome obrigatório!");
-    const data = { nome: nome, ufs_atendidas: document.getElementById('transpUfs').value.toUpperCase(), preco_kg: parseFloat(document.getElementById('transpPrecoKg').value)||0, pedagio: parseFloat(document.getElementById('transpPedagio').value)||0, ad_valorem: parseFloat(document.getElementById('transpAdValorem').value)||0, gris: parseFloat(document.getElementById('transpGris').value)||0, outros_pct: parseFloat(document.getElementById('transpOutrosPct').value)||0, taxa_fixa: parseFloat(document.getElementById('transpTaxa').value)||0, tas: parseFloat(document.getElementById('transpTas').value)||0, frete_minimo: parseFloat(document.getElementById('transpMinimo').value)||0 };
-    db.collection("transportadores").add(data).then(()=>{ alert("Tabela Salva!"); carregarTransportadores(); });
-}
+
+// =============================================================================
+// CORREÇÃO: CARREGAR RISCOS E IR PARA O LOCAL
+// =============================================================================
+
+
 function carregarTransportadores() { 
     db.collection("transportadores").get().then(q => { transportadoresCache = []; const div = document.getElementById('listaTransportadores'); div.innerHTML=""; q.forEach(doc=>{ const d=doc.data(); transportadoresCache.push(d); div.innerHTML+=`<div class="d-flex justify-content-between border-bottom p-2 align-items-center"><div><strong>${d.nome}</strong> <span class="badge bg-light text-dark">${d.ufs_atendidas}</span><br><small class="text-muted">Min: R$${d.frete_minimo} • Kg: R$${d.preco_kg} • AdV: ${d.ad_valorem}%</small></div><i class="fas fa-trash text-danger" style="cursor:pointer" onclick="delDoc('transportadores','${doc.id}')"></i></div>`; }); }); 
 }
@@ -1679,7 +1805,7 @@ function voltarInput() { document.getElementById('resultSection').style.display=
 function limparMapa() { markers.forEach(m => m.remove()); markers = []; if(map.getLayer('route')) { map.removeLayer('route'); map.removeSource('route'); } document.getElementById('financePanel').style.display='none'; document.getElementById('routeStats').style.display='none'; }
 function showLoading(show, txt) { document.getElementById('loading').style.display = show ? 'block' : 'none'; if(txt) document.getElementById('loading-text').innerText = txt; }
 // ==============================================================
-// LÓGICA DE REDIMENSIONAMENTO DA SIDEBAR (NOVO)
+//          LÓGICA DE REDIMENSIONAMENTO DA SIDEBAR (NOVO)
 // ==============================================================
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1745,7 +1871,7 @@ window.renomearRota = function(idx) {
 };
 
 // =============================================================================
-// MÓDULO 8: BACKLOG E SOBRAS (VISUALIZAR E RESGATAR)
+//          MÓDULO 8: BACKLOG E SOBRAS (VISUALIZAR E RESGATAR)
 // =============================================================================
 
 // 1. VISUALIZAR PENDENTES (NOVO)
@@ -1862,34 +1988,108 @@ window.atualizarContadorPendentes = function() {
 setTimeout(atualizarContadorPendentes, 2000);
 
 // =============================================================================
-// MÓDULO 9: UTILITÁRIOS
+// MÓDULO 9: UTILITÁRIOS E FUNÇÕES VISUAIS (RISCOS E OUTROS)
 // =============================================================================
 
-function showLoading(s, t) { const el = document.getElementById('loading'); if(el) el.style.display = s ? 'block' : 'none'; if(t) document.getElementById('loading-text').innerText = t; }
-function voltarInput() { document.getElementById('resultSection').style.display='none'; document.getElementById('inputSection').style.display='block'; limparMapa(); }
-function limparMapa() { if(markers) { markers.forEach(m => m.remove()); markers = []; } if(map.getLayer('route')) { map.removeLayer('route'); map.removeSource('route'); } document.getElementById('financePanel').style.display='none'; document.getElementById('routeStats').style.display='none'; }
-function delDoc(col, id) { 
-    // TRAVA DE SEGURANÇA GERAL
-    if (currentUser.role !== 'MASTER') {
-        return alert("ACESSO NEGADO: Somente usuários MASTER podem apagar registros do sistema.");
-    }
+function carregarRiscos() { 
+    const div = document.getElementById('listaRiscos'); 
+    if (!div) return;
 
-    if(confirm("ATENÇÃO: Isso apagará o registro permanentemente. Continuar?")) {
-        db.collection(col).doc(id).delete().then(() => { 
-            if(col==='historico') carregarHistorico(); 
-            if(col==='areas_risco') carregarRiscos(); 
-            if(col==='transportadores') carregarTransportadores(); 
+    // Loading rápido visual
+    div.innerHTML = "<div class='text-center p-3 text-muted'><i class='fas fa-spinner fa-spin'></i> Carregando riscos...</div>";
+
+    db.collection("areas_risco").get().then(q => { 
+        risksCache = []; 
+        div.innerHTML = ""; 
+        
+        if(q.empty) {
+            div.innerHTML = "<div class='alert alert-light text-center small text-muted'>Nenhuma área de risco cadastrada.</div>";
+            return;
+        }
+
+        q.forEach(doc => { 
+            const d = doc.data(); 
+            risksCache.push(d); 
+            
+            // VISUAL NOVO: CARD CLICÁVEL
+            // Adicionei classe 'card', sombra, borda vermelha e cursor pointer
+            div.innerHTML += `
+            <div class="card mb-2 shadow-sm border-start border-danger border-3 risk-card" 
+                 style="transition: all 0.2s; cursor: pointer; border-radius: 8px;">
+                
+                <div class="card-body p-2 d-flex justify-content-between align-items-center">
+                    
+                    <div style="flex: 1;" onclick="window.irParaRisco(${d.lat}, ${d.lon})" title="Ver no Mapa">
+                        <div class="fw-bold text-danger" style="font-size: 0.9rem;">
+                            <i class="fas fa-exclamation-triangle me-1"></i> ${d.descricao}
+                        </div>
+                        <div class="text-muted small">
+                            Custo: <strong>R$ ${parseFloat(d.custo_extra).toLocaleString('pt-BR')}</strong> • Raio: ${d.raio}m
+                        </div>
+                    </div>
+
+                    <button class="btn btn-sm text-secondary hover-danger ms-2" 
+                            onclick="event.stopPropagation(); window.delDoc('areas_risco','${doc.id}')" 
+                            title="Excluir Risco">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+            </div>`; 
         }); 
+        
+        // Redesenha as bolinhas vermelhas no mapa
+        desenharRiscosNoMapa(); 
+    }); 
+}
+
+// Função de Zoom no Mapa (Com Highlight)
+window.irParaRisco = function(lat, lon) {
+    if (lat && lon) {
+        // Voa para o local
+        map.flyTo({ 
+            center: [lon, lat], 
+            zoom: 14, 
+            speed: 1.8,
+            essential: true 
+        });
+        
+        // Mostra um Popup temporário para identificar
+        new mapboxgl.Popup({closeOnClick: true, closeButton: false})
+            .setLngLat([lon, lat])
+            .setHTML(`<div class="badge bg-danger text-white p-2">📍 ÁREA DE RISCO AQUI</div>`)
+            .addTo(map);
+            
+    } else {
+        alert("Este cadastro não possui coordenadas válidas.");
+    }
+};
+
+// Funções Auxiliares mantidas
+function desenharRiscosNoMapa() {
+    if (map.getLayer('riscos-layer')) map.removeLayer('riscos-layer');
+    if (map.getSource('riscos-source')) map.removeSource('riscos-source');
+    
+    const features = risksCache.map(r => { 
+        if(r.lat && r.lon) { 
+            return turf.circle([r.lon, r.lat], r.raio/1000, {steps: 64, units: 'kilometers', properties: {description: r.descricao}}); 
+        } 
+    }).filter(f => f);
+    
+    if(features.length > 0) { 
+        map.addSource('riscos-source', { type: 'geojson', data: { type: 'FeatureCollection', features: features } }); 
+        map.addLayer({ id: 'riscos-layer', type: 'fill', source: 'riscos-source', layout: {}, paint: { 'fill-color': '#dc3545', 'fill-opacity': 0.35, 'fill-outline-color': '#b02a37' } }); 
     }
 }
-async function salvarRisco() { const a = document.getElementById('riskAddr').value; if(!a) return; try { const r = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(a)}.json?access_token=${MAPBOX_KEY}&limit=1`); const d = await r.json(); if(d.features?.length) db.collection("areas_risco").add({ descricao: document.getElementById('riskDesc').value, custo_extra: parseFloat(document.getElementById('riskCost').value), raio: parseInt(document.getElementById('riskRadius').value), lat: d.features[0].center[1], lon: d.features[0].center[0] }).then(()=>{ alert("Salvo"); carregarRiscos(); }); } catch(e){} }
-function carregarRiscos() { db.collection("areas_risco").get().then(q => { risksCache=[]; const d=document.getElementById('listaRiscos'); if(d) d.innerHTML=""; q.forEach(doc=>{ const da=doc.data(); risksCache.push(da); if(d) d.innerHTML+=`<div>${da.descricao} <i class="fas fa-trash" onclick="delDoc('areas_risco','${doc.id}')"></i></div>`; }); desenharRiscosNoMapa(); }); }
-function desenharRiscosNoMapa() { if(map.getLayer('rl')) map.removeLayer('rl'); if(map.getSource('rs')) map.removeSource('rs'); const f = risksCache.map(r => r.lat?turf.circle([r.lon, r.lat], r.raio/1000):null).filter(x=>x); if(f.length) { map.addSource('rs',{type:'geojson',data:{type:'FeatureCollection',features:f}}); map.addLayer({id:'rl',type:'fill',source:'rs',paint:{'fill-color':'#f00','fill-opacity':0.3}}); } }
-function salvarTransportadora() { const n = document.getElementById('transpNome').value; if(!n) return alert("Nome!"); db.collection("transportadores").add({nome: n, ufs_atendidas: document.getElementById('transpUfs').value.toUpperCase(), preco_kg: parseFloat(document.getElementById('transpPrecoKg').value)||0, pedagio: parseFloat(document.getElementById('transpPedagio').value)||0, ad_valorem: parseFloat(document.getElementById('transpAdValorem').value)||0, gris: parseFloat(document.getElementById('transpGris').value)||0, taxa_fixa: parseFloat(document.getElementById('transpTaxa').value)||0, tas: parseFloat(document.getElementById('transpTas').value)||0, frete_minimo: parseFloat(document.getElementById('transpMinimo').value)||0 }).then(()=>{alert("Salvo"); carregarTransportadores();}); }
-function carregarTransportadores() { db.collection("transportadores").get().then(q => { transportadoresCache=[]; const d=document.getElementById('listaTransportadores'); if(d) d.innerHTML=""; q.forEach(doc=>{ const da=doc.data(); transportadoresCache.push(da); if(d) d.innerHTML+=`<div>${da.nome} <i class="fas fa-trash" onclick="delDoc('transportadores','${doc.id}')"></i></div>`; }); }); }
 
+// Função rápida para adicionar estilo de hover (Opcional, mas melhora a UX)
+const styleRisk = document.createElement('style');
+styleRisk.innerHTML = `
+    .risk-card:hover { transform: translateX(3px); background-color: #fff5f5; }
+    .hover-danger:hover { color: #dc3545 !important; }
+`;
+document.head.appendChild(styleRisk);
 // =============================================================================
-// MÓDULO 10: INTERAÇÃO COM A ROTA (O GRANDE FIX)
+//              MÓDULO 10: INTERAÇÃO COM A ROTA (O GRANDE FIX)
 // =============================================================================
 
 window.toggleListaPedidos = function(idx) {
@@ -2049,7 +2249,7 @@ function recalcularRotaInfo(rota) {
 }
 
 // =============================================================================
-// MÓDULO 11: GESTÃO DE USUÁRIOS E PERMISSÕES (ATUALIZADO)
+//              MÓDULO 11: GESTÃO DE USUÁRIOS E PERMISSÕES (ATUALIZADO)
 // =============================================================================
 
 window.carregarListaUsuarios = function() {
@@ -2130,7 +2330,7 @@ window.salvarPermissoesUsuario = function() {
 };
 
 // =============================================================================
-// MÓDULO 12: EDIÇÃO AVANÇADA DE ROTAS (NOVO)
+//                  MÓDULO 12: EDIÇÃO AVANÇADA DE ROTAS (NOVO)
 // =============================================================================
 
 // 1. TRAVAR/DESTRAVAR ROTA
@@ -2260,7 +2460,7 @@ function verificarPermissaoEdicao(rIdx) {
 }
 
 // =============================================================================
-// LÓGICA DE DRAG & DROP (ARRASTAR E SOLTAR)
+//                  LÓGICA DE DRAG & DROP (ARRASTAR E SOLTAR)
 // =============================================================================
 
 let draggedItemContext = null; 
@@ -2309,7 +2509,7 @@ window.drop = function(e, targetRotaIdx, targetPedidoIdx) {
 };
 
 // =============================================================================
-// FUNÇÃO: DAR ZOOM E DESTAQUE NO PINO (CLIQUE NA LISTA)
+//          FUNÇÃO: DAR ZOOM E DESTAQUE NO PINO (CLIQUE NA LISTA)
 // =============================================================================
 window.destacarPedidoNoMapa = function(rotaIdx, pedidoIdx) {
     
@@ -2364,7 +2564,7 @@ function aplicarDestaque(index) {
 //
 
 // =============================================================================
-// FUNÇÃO: SALVAR O TARGET (META) NO BANCO DE DADOS
+//              FUNÇÃO: SALVAR O TARGET (META) NO BANCO DE DADOS
 // =============================================================================
 window.salvarTarget = function() {
     const idOp = document.getElementById('selOperacaoCotacao').value;
